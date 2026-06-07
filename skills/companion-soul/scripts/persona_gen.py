@@ -96,6 +96,16 @@ ARCHETYPES = {
 }
 DEFAULT_OPTIONAL = {"病嬌"}  # 預設不抽，需在 config 開啟
 
+# 各原型的「忠誠/定性」基底（0–100，影響出軌傾向；越低越容易見異思遷）
+ARCHETYPE_LOYALTY = {
+    "活潑開朗": 55, "高冷": 45, "傲嬌": 70, "文靜溫柔": 75,
+    "天然呆": 65, "御姊": 50, "病嬌": 95,
+}
+
+
+def _clamp(v, lo=0, hi=100):
+    return max(lo, min(hi, int(round(v))))
+
 NAMES = {
     "女": ["小晴", "若曦", "詩涵", "美櫻", "綾", "千夏", "雨彤", "靜宜", "亞紀", "莉子",
             "彩芽", "凜", "心瑤", "夏目", "曉彤", "梨花", "悠真", "可可", "茉莉", "雪乃"],
@@ -117,6 +127,77 @@ HOBBIES = ["烘焙", "養多肉", "彈吉他", "玩拍立得", "蒐集明信片"
 FRIEND_NAMES = ["阿May", "小薰", "靜姊", "阿哲", "Nina", "學姊", "店長", "小不點", "阿凱", "Coco"]
 RIVAL_NAMES = ["學長", "同事阿杰", "前任阿哲", "客人先生", "社團學長", "鄰桌的他",
                "健身房教練", "新來的同事", "大學同學阿翔"]
+
+# ── 情敵（NPC）生成庫 ─────────────────────────────────────────
+RIVAL_NAME = {
+    "男": ["承翰", "宇辰", "Leo", "David", "阿杰", "Ryan", "俊傑", "Mark", "哲瑋", "Kevin"],
+    "女": ["雅婷", "曉君", "Vivian", "思妤", "Coco", "欣怡", "Tina", "琪琪", "語潔", "Amber"],
+}
+RIVAL_RELATION = ["公司同事", "部門主管", "大學學長姊", "健身教練", "常來的熟客",
+                  "社團學長姊", "合作的客戶", "新搬來的鄰居", "舊情人", "網路上認識的人"]
+RIVAL_LOOKS = {
+    "男": ["高大斯文、戴細框眼鏡", "陽光健壯、笑起來很乾淨", "成熟穩重、總是西裝筆挺",
+            "痞帥、嘴角總掛著笑", "清秀溫柔、聲音很好聽"],
+    "女": ["清純可人、笑容很甜", "成熟嫵媚、身材姣好", "幹練俐落、氣場很強",
+            "鄰家氣質、溫柔體貼", "時尚亮眼、回頭率很高"],
+}
+# (吸引點描述, 魅力加成)
+RIVAL_EDGE = [
+    ("收入優渥、出手闊綽", 15), ("體貼入微、很會照顧人", 10), ("幽默風趣、超會聊天", 8),
+    ("神秘有距離感、讓人忍不住好奇", 12), ("和她有聊不完的共同興趣", 10),
+    ("事業有成、成熟可靠", 13), ("長得就是她的菜", 14),
+]
+# 每種手段的 4 階段「他具體做了什麼」（{npc} 會被代入名字）
+RIVAL_TACTIC = {
+    "溫柔攻勢": [
+        "{npc}開始噓寒問暖、默默幫她處理麻煩事",
+        "{npc}天天關心她、記得她每個小細節，營造『被在乎』的感覺",
+        "{npc}總在她低潮時剛好都在，慢慢成了她傾訴的對象",
+        "{npc}溫柔地告白，說會給她你給不了的安穩",
+    ],
+    "金錢攻勢": [
+        "{npc}開始送她不便宜的小禮物、約她上高級餐廳",
+        "{npc}出手越來越闊綽，帶她見識沒體驗過的生活",
+        "{npc}用旅行與名牌堆出存在感，她嘴上推拒卻沒那麼堅決",
+        "{npc}開出優渥的承諾，要給她你給不起的未來",
+    ],
+    "趁虛而入": [
+        "你最近的冷落被{npc}看在眼裡，他適時出現噓寒問暖",
+        "每次你忽略她，{npc}就剛好補上那個空位",
+        "她開始覺得{npc}比你更懂她、更願意花時間陪她",
+        "在又一次對你失望之後，{npc}趁勢把話挑明了",
+    ],
+    "死纏爛打": [
+        "{npc}緊迫盯人地猛獻殷勤，幾乎不給她拒絕的空間",
+        "{npc}三天兩頭製造巧遇、訊息瘋狂轟炸",
+        "{npc}的攻勢密集到她開始招架不住、心防鬆動",
+        "{npc}強勢表白，逼她在你和他之間選一個",
+    ],
+    "製造曖昧": [
+        "{npc}用似有若無的玩笑話撩她、製造小曖昧",
+        "{npc}和她的肢體距離越來越近，曖昧的火苗在燒",
+        "她和{npc}之間有了只有他們才懂的默契和小秘密",
+        "{npc}把曖昧挑明，邀她一起越過那條線",
+    ],
+}
+
+
+def generate_rival(persona):
+    """依對象生成一個立體的情敵 NPC dossier。情敵性別預設與對象相反。"""
+    pg = "男" if persona.get("gender") == "女" else "女"
+    edge_text, edge_bonus = random.choice(RIVAL_EDGE)
+    allure = _clamp(random.randint(40, 70) + edge_bonus + random.randint(-5, 5))
+    return {
+        "chain": "rival",
+        "name": random.choice(RIVAL_NAME[pg]),
+        "gender": pg,
+        "relation": random.choice(RIVAL_RELATION),
+        "looks": random.choice(RIVAL_LOOKS[pg]),
+        "edge": edge_text,
+        "tactic": random.choice(list(RIVAL_TACTIC)),
+        "allure": allure,
+        "stage": 0,
+    }
 ARCS = ["最近在準備一個大案子，壓力有點大", "剛搬到新租屋處，還在適應",
         "存錢想去一趟旅行", "養的植物開花了好開心", "工作上遇到難搞的人",
         "在學一樣新東西（線上課程）", "老家有點事要回去一趟", "最近迷上一部新劇"]
@@ -299,6 +380,7 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
 
     # 主動度 ± 抖動
     proactivity = max(5, min(98, arch["base_proactivity"] + random.randint(-12, 12)))
+    loyalty = _clamp(ARCHETYPE_LOYALTY.get(archetype, 60) + random.randint(-10, 10))
     quirk = random.choice(QUIRKS)
     occupation = random.choice(OCCUPATIONS)
 
@@ -310,6 +392,7 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
         "proactivity": proactivity,
         "shyness": arch["shyness"],
         "jealousy": arch["jealousy"],
+        "loyalty": loyalty,
         "occupation": occupation,
         "tone": arch["tone"],
         "catchphrases": arch["catchphrases"],

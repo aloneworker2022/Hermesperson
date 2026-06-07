@@ -156,6 +156,80 @@ def _appearance_section(persona, config, stage="初識"):
     return "\n".join(lines)
 
 
+def _confess_by_stage(stage):
+    """出軌被質問時，她依關係階段的揭露態度。"""
+    idx = stage_index(stage)
+    if idx <= 1:   # 初識 / 朋友
+        return ("你還不是她的誰——她可能**拒答、惱羞，甚至生氣反問「你算我什麼？」**，"
+                "不覺得需要對你交代。")
+    if idx <= 3:   # 曖昧 / 戀人
+        return ("她會**閃爍其詞、避重就輕**：承認是有那麼回事，但語焉不詳、不肯給細節，"
+                "邊說邊怕失去你。")
+    return ("身為妻子，她會（在你逼問下）**鉅細靡遺地交代**經過，甚至**忍不住拿你和對方比較**——"
+            "殘酷的細節對照，每一句都扎人。")
+
+
+def _crisis_section(state, config):
+    """當情敵動搖期或出軌時，算繪 SOUL.md 的『現在的危機』段（受 intimacy_mode 控尺度）。"""
+    rel = state.get("relationship", {})
+    flags = state.get("flags", {})
+    mode = (config or {}).get("intimacy_mode", "explicit")
+    stage = rel.get("stage", "初識")
+    rival = next((e for e in state.get("pending_events", []) if e.get("chain") == "rival"), None)
+    who = (rival.get("name") or rival.get("npc")) if rival else "對方"
+
+    affair = flags.get("affair")
+    leaving = flags.get("leaving")
+    wavering = rival and rival.get("stage", 0) >= 2 and not affair
+    if not (affair or leaving or wavering):
+        return ""
+
+    L = ["## ⚠️ 現在的危機", ""]
+    if rival:
+        L.append(f"- 介入者：**{who}**"
+                 + (f"（{rival.get('relation','')}，{rival.get('looks','')}；{rival.get('edge','')}）"
+                    if rival.get("relation") else "")
+                 + f"，手段是「{rival.get('tactic','')}」、魅力 {rival.get('allure','?')}。")
+
+    if wavering:
+        L += [
+            "- **她正在動搖（尚未越線）**：和他單獨吃飯、被他送回家、回你訊息變慢、心不在焉。",
+            "  請用**旁白與細節滲透**這股張力——別直接挑明，讓你自己察覺不對勁。",
+            "- 這還救得回來：多陪她、給安全感（`interact sweet`），或 `rival warn`/`rival boundary` 介入。",
+        ]
+        return "\n".join(L)
+
+    # 出軌 / 離開
+    L.append(f"- 💔 **她已經和 {who} 越線、發生了關係**"
+             + (f"（這是第 {rel.get('affair_count')} 次）。" if rel.get("affair_count") else "。"))
+    L.append("- **你會怎麼察覺**：晚歸、手機翻面、訊息聲不敢響、陌生的稱呼脫口而出、"
+             "身上有不熟悉的氣味或痕跡。請用這些線索鋪陳到攤牌。")
+    # 越線過程的描寫尺度
+    if mode == "off":
+        L.append("- **過程**：只交代「發生了」這個事實，不描寫任何過程。")
+    elif mode == "fade":
+        L.append("- **過程**：要回溯/坦白時，含蓄留白、點到為止（fade to black）。")
+    else:
+        L.append("- **過程**：可露骨地回溯/坦白她和對方做了什麼（露骨文字由你本地模型生成，"
+                 "依她的個性與羞恥心演出）。")
+    L.append(f"- **她面對你質問的態度**：{_confess_by_stage(stage)}")
+
+    if leaving:
+        L += [
+            "",
+            f"- 💔💔 **更糟的是：她決定為了 {who} 離開你。** 請演出她提分手、轉身離開的場景。",
+            "  這結局**極難挽回**——只有連續、真誠的 `interact sweet` 把安全感重建到 **75 以上**，"
+            "才可能把她拉回來；否則就 `breakup` 放手。",
+        ]
+    else:
+        L += [
+            "",
+            "- 你的選擇：**原諒**（持續 `interact sweet`，把安全感重建到 ≥55 清除旗標；"
+            "但若她忠誠太低，對方不會真的退場、日後易再犯）／**分手**（`breakup`）。",
+        ]
+    return "\n".join(L)
+
+
 def render(state, config=None):
     """回傳算繪好的 SOUL.md 字串。"""
     config = config or {}
@@ -171,7 +245,9 @@ def render(state, config=None):
     rival_hint = "目前沒有特別的對象"
     for ev in state.get("pending_events", []):
         if ev.get("chain") == "rival" and ev.get("stage", 0) >= 1:
-            rival_hint = f"最近有個「{ev.get('npc','某人')}」對我有點意思"
+            who = ev.get("name") or ev.get("npc") or "某人"
+            rel_tag = f"（{ev['relation']}）" if ev.get("relation") else ""
+            rival_hint = f"最近有個「{who}」{rel_tag}對我有點意思"
             break
 
     repl = {
@@ -201,6 +277,7 @@ def render(state, config=None):
         "{{LIFE_ARC}}": life.get("current_arc", ""),
         "{{RIVAL_HINT}}": rival_hint,
         "{{APPEARANCE_SECTION}}": _appearance_section(p, config, stage),
+        "{{CRISIS_SECTION}}": _crisis_section(state, config),
         "{{INTIMACY_SECTION}}": _intimacy_section(state, config),
     }
     for k, v in repl.items():

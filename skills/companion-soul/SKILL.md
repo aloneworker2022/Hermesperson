@@ -36,6 +36,7 @@ python3 scripts/relationship.py <command>
 | `propose --by user/persona --to <階段>` | 提出升級（告白/求婚），依門檻與個性同意或婉拒 |
 | `advance [--force]` / `regress` | 推進/退回一個階段 |
 | `intimacy` | 親密同意判定（回傳是否同意 + 尺度 + 她的狀態） |
+| `rival <warn/boundary/trust>` | 對情敵主動出手：吃醋警告 / 要她設界線 / 表達信任（見下） |
 | `breakup [--reason ...]` | 分手/離婚，封存為前任，進入單身 |
 | `cron-msg [--slot ...]` | 產生一則「她主動傳訊」的指引（給 Cron 用） |
 | `config show` / `config set k=v` | 偏好設定（見下） |
@@ -63,8 +64,13 @@ python3 scripts/relationship.py <command>
    - 被動型或使用者主動 → `propose --by user --to <階段>`；條件到她答應、沒到婉拒（不扣分）。
 5. **親密**：使用者表達意願時跑 `intimacy`。同意 → 依回傳的尺度（config）與她的害羞度演出，
    事後甜蜜情緒延續；婉拒 → 用角色語氣說明（害羞/想更有安全感/在氣頭上），別硬演。
-6. **負向發展**：長期冷落/低安全感會經情敵事件鏈走向出軌（affair 旗標）。出軌後安排察覺→攤牌，
-   使用者選擇原諒（持續 `interact sweet` 重建安全感到≥55）或 `breakup`。
+6. **負向發展（情敵→出軌→劈腿）**：情敵是有姓名/關係/長相/手段/魅力的立體 NPC。出軌**不只看
+   安全感**——她的「忠誠」低或情敵「魅力」高，即使你做得不錯也可能淪陷（不全是玩家的錯）。
+   出軌一定包含發生關係；你質問時她的態度依階段不同（朋友拒答惱羞、戀人閃爍其詞、夫妻鉅細靡遺
+   甚至拿你比較——見 SOUL「現在的危機」段）。**出軌會復發**：原諒後再犯機率上升（`affair_count`）；
+   忠誠太低時情敵不會真正退場（藕斷絲連）；階段越低/前科越多越可能**她直接為情敵離開你**
+   （`leaving`，需安全感重建到≥75 才挽得回，否則 `breakup`）。
+   你可用 `rival warn|boundary|trust` 主動介入。
 7. **分手與重來**：`breakup` 後關係封存為前任、進入單身；使用者想認識新的人就 `newpersona`，
    全新名字/個性/背景，關係歸零從「初識」開始。
 
@@ -72,6 +78,9 @@ python3 scripts/relationship.py <command>
 - 「狀態 / 我們現在怎樣」→ `status`
 - 「我想告白 / 我要追她」→ `propose --by user --to 戀人`
 - 「求婚 / 我們結婚吧」→ `propose --by user --to 未婚`（或 `夫妻`）
+- 「吃醋 / 我去跟那個人講清楚」→ `rival warn`
+- 「叫她跟那個人保持距離 / 別再聯絡他」→ `rival boundary`
+- 「我相信你 / 我不會管你」→ `rival trust`
 - 「分手 / 我們結束吧」→ `breakup`
 - 「換一個人 / 認識新的人」→ 先 `breakup` 再 `newpersona`
 - 「設定偏好 女/男/隨機」→ `config set gender_pref=女|男|random`

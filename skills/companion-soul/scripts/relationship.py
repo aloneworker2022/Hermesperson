@@ -175,14 +175,14 @@ def new_state(persona):
         "persona": persona,
         "relationship": {
             "stage": "初識", "affinity": 10, "trust_security": 50,
-            "mood": "普通", "intimacy_level": 0,
+            "mood": "普通", "intimacy_level": 0, "affair_count": 0,
         },
         "counters": {
             "interaction_count": 0, "days_since_stage": 0,
             "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
         },
         "milestones": [], "pending_events": [],
-        "flags": {"affair": False, "engaged": False, "married": False},
+        "flags": {"affair": False, "engaged": False, "married": False, "leaving": False},
     }
 
 
@@ -279,63 +279,119 @@ def _apply_decay(state, cfg, briefing):
 
 # 情敵/出軌 事件鏈
 RIVAL_STAGE_DESC = {
-    0: "出現了：{npc} 開始對她示好/搭訕。她（依個性）跟你提起這件事。",
-    1: "糾纏：{npc} 持續獻殷勤、約她。她在觀察你的反應——你給的安全感是關鍵。",
-    2: "動搖：她開始拿你和 {npc} 比較，回訊變慢、心不在焉（旁白透露即可，別講白）。",
-    3: "臨界：{npc} 正式追求。這次互動的安全感將決定她留下還是離開。",
+    0: "{npc} 開始對她示好/搭訕。她（依個性）跟你提起這件事。",
+    1: "{npc} 持續獻殷勤、約她。她在觀察你的反應。",
+    2: "她開始拿你和 {npc} 比較，回訊變慢、心不在焉。",
+    3: "{npc} 正式追求，攤牌在即。",
 }
 
 
+def _rival_name(r):
+    return r.get("name") or r.get("npc") or "某人"
+
+
+def _rival_label(r):
+    """情敵身分標籤，如：阿凱（健身教練・金錢攻勢）。"""
+    bits = [b for b in (r.get("relation"), r.get("tactic")) if b]
+    return f"{_rival_name(r)}（{'・'.join(bits)}）" if bits else _rival_name(r)
+
+
+def _rival_action(r, stage):
+    """這個階段他具體做了什麼（依手段；舊資料退回通用描述）。"""
+    seq = persona_gen.RIVAL_TACTIC.get(r.get("tactic"))
+    tpl = seq[stage] if seq and 0 <= stage < len(seq) else RIVAL_STAGE_DESC.get(stage, "")
+    return tpl.format(npc=_rival_name(r))
+
+
+def _temptation(rel, persona, rival):
+    """誘惑壓力：安全感低、忠誠低、情敵魅力高、出軌前科多 → 越大。"""
+    return ((50 - rel.get("trust_security", 50))
+            + (55 - persona.get("loyalty", 60))
+            + (rival.get("allure", 50) - 50)
+            + 8 * rel.get("affair_count", 0))
+
+
+def _trigger_affair(state, cfg, rival, briefing):
+    """觸發出軌：一定發生關係；並依條件決定是『出軌(可攤牌)』還是『她直接離開你』。"""
+    rel, persona = state["relationship"], state["persona"]
+    name = _rival_name(rival)
+    rel["affair_count"] = rel.get("affair_count", 0) + 1
+    state["flags"]["affair"] = True
+    rel["affinity"] = clamp(rel["affinity"] - 20)
+    rel["trust_security"] = clamp(rel["trust_security"] - 15)
+    rel["mood"] = "低落"
+    # 她主動離開你的機率：階段越低 / 復發越多 / 忠誠越低 / 魅力越高 → 越高
+    idx = stage_index(rel["stage"])
+    leave = (0.10 + max(0, 3 - idx) * 0.12 + (rel["affair_count"] - 1) * 0.15
+             + max(0, 50 - persona.get("loyalty", 60)) * 0.006
+             + max(0, rival.get("allure", 50) - 60) * 0.008)
+    if random.random() < min(0.9, leave):
+        state["flags"]["leaving"] = True
+        add_milestone(state, "離開", f"她為了 {_rival_label(rival)} 離開你。")
+        briefing.append(
+            f"💔💔【被奪走】她不只越線——她決定為了 {name} 離開你。請演出她提分手、跟對方走。"
+            "此結局極難挽回（需連續高品質 `interact sweet` 把安全感重建到很高），否則只能 `breakup`。"
+            "細節見 SOUL 的『現在的危機』。")
+    else:
+        add_milestone(state, "出軌",
+                      f"她和 {_rival_label(rival)} 越線了（第 {rel['affair_count']} 次）。")
+        briefing.append(
+            f"💔【出軌·第{rel['affair_count']}次】她和 {name} 發生了關係。請安排你察覺/撞見的線索並"
+            "帶向攤牌；她面對質問的態度依關係階段不同（見 SOUL 的『現在的危機』）。"
+            "之後可原諒（`interact sweet` 重建≥55）或 `breakup`。")
+
+
 def _advance_rival(state, cfg, briefing):
-    rel = state["relationship"]
+    rel, persona = state["relationship"], state["persona"]
     sec = rel["trust_security"]
     events = state.setdefault("pending_events", [])
     active = next((e for e in events if e.get("chain") == "rival"), None)
 
-    # 也許生成新情敵（朋友以上、無進行中事件、未結婚也可能、機率受安全感影響）
+    # 生成新情敵（朋友以上、無進行中事件、未出軌）
     if not active and stage_index(rel["stage"]) >= 1 and not state["flags"].get("affair"):
-        prob = 0.12 + (0.18 if sec < 50 else 0.0)
+        prob = (0.12 + (0.18 if sec < 50 else 0.0)
+                + max(0, 55 - persona.get("loyalty", 60)) * 0.004
+                + rel.get("affair_count", 0) * 0.05)
         if random.random() < prob:
-            npc = random.choice(persona_gen.RIVAL_NAMES)
-            active = {"chain": "rival", "npc": npc, "stage": 0}
+            active = persona_gen.generate_rival(persona)
             events.append(active)
-            briefing.append("【情敵·新】" + RIVAL_STAGE_DESC[0].format(npc=npc))
+            briefing.append(
+                f"【情敵·新】{_rival_label(active)} 出現了——{active.get('looks','')}，"
+                f"{active.get('edge','')}（魅力 {active.get('allure',50)}）。"
+                f"{_rival_action(active, 0)}。她（依個性）會跟你提起。")
             return
 
     if not active:
         return
 
-    npc = active["npc"]
-    if sec >= 70:  # 安全感高 → 化解
+    name = _rival_name(active)
+    T = _temptation(rel, persona, active)
+
+    # 化解：安全感高且誘惑壓力不大（她夠忠誠、情敵沒那麼致命）
+    if sec >= 70 and T < 30:
         if active["stage"] >= 2:
             events.remove(active)
             rel["trust_security"] = clamp(sec + 5)
             rel["mood"] = "開心"
-            add_milestone(state, "拒絕情敵", f"她拒絕了 {npc}，因為她心裡只有你。")
-            briefing.append(f"【情敵·化解】她明確拒絕了 {npc}、更黏你了（你的陪伴奏效）。")
+            add_milestone(state, "拒絕情敵", f"她當著你的面回絕了 {_rival_label(active)}，心裡只有你。")
+            briefing.append(f"【情敵·化解】她明確回絕了 {name}、更黏你了（你的陪伴奏效）。")
         else:
             events.remove(active)
-            briefing.append(f"【情敵·淡出】{npc} 的事自然淡了，沒成氣候。")
+            briefing.append(f"【情敵·淡出】{name} 的事自然淡了，沒成氣候。")
         return
 
-    if sec < 45:  # 安全感低 → 惡化
+    # 惡化：誘惑壓力大 → 推進，必要時觸發出軌
+    if T >= 25:
         active["stage"] = min(3, active["stage"] + 1)
-        if active["stage"] >= 3 and sec < 35:
-            # 出軌！
-            state["flags"]["affair"] = True
-            rel["affinity"] = clamp(rel["affinity"] - 20)
-            rel["trust_security"] = clamp(sec - 15)
-            rel["mood"] = "低落"
-            add_milestone(state, "出軌", f"長期缺乏安全感，她和 {npc} 之間越線了。")
-            briefing.append(
-                f"💔【出軌】她和 {npc} 越線了。請安排「你察覺/撞見」的線索（晚回、陌生稱呼、"
-                "心虛），帶向攤牌。之後你可選擇原諒（`interact sweet` 重建）或 `breakup`。")
+        if (active["stage"] >= 3 and T >= 40) or (active["stage"] >= 2 and T >= 75):
+            _trigger_affair(state, cfg, active, briefing)
         else:
-            briefing.append("【情敵·惡化】" + RIVAL_STAGE_DESC[active["stage"]].format(npc=npc))
+            briefing.append(f"【情敵·惡化】{_rival_action(active, active['stage'])}"
+                            "（動搖期只用旁白暗示、別講白）。")
         return
 
     # 中間：維持、慢燃
-    briefing.append("【情敵·持續】" + RIVAL_STAGE_DESC[active["stage"]].format(npc=npc))
+    briefing.append(f"【情敵·持續】{_rival_action(active, active['stage'])}。")
 
 
 def _check_upgrade_hint(state, cfg, briefing):
@@ -404,13 +460,36 @@ def cmd_interact(args, cfg):
         rel["mood"] = "普通"
     state["counters"]["interaction_count"] += 1
     state["counters"]["last_interaction_at"] = now_dt().strftime("%Y-%m-%dT%H:%M:%S")
-    # 原諒出軌：sweet 互動可逐步修復並清旗標
+    # 原諒出軌：sweet 互動可逐步修復並清旗標（離開結局門檻更高）
     note = ""
-    if state["flags"].get("affair") and q == "sweet" and rel["trust_security"] >= 55:
-        state["flags"]["affair"] = False
-        state["pending_events"] = [e for e in state["pending_events"] if e.get("chain") != "rival"]
-        add_milestone(state, "原諒", "你選擇原諒，她痛哭著回到你身邊，傷痕還在但願意重新開始。")
-        note = "\n（出軌已被原諒、旗標清除，但這道疤會留在記憶裡。）"
+    if state["flags"].get("affair") and q == "sweet":
+        loyalty = state["persona"].get("loyalty", 60)
+        if state["flags"].get("leaving"):
+            # 她已決定離開——需把安全感重建到很高才挽回得了
+            if rel["trust_security"] >= 75:
+                state["flags"]["affair"] = False
+                state["flags"]["leaving"] = False
+                state["pending_events"] = [e for e in state["pending_events"]
+                                           if e.get("chain") != "rival"]
+                add_milestone(state, "挽回", "在你拚命的真心下，她最終沒有離開，留了下來。")
+                note = "\n（你把她從離開的邊緣拉了回來；但這道疤永遠留在記憶裡。）"
+            else:
+                note = ("\n（她心已飄向對方，光是甜蜜還不夠——安全感要重建到 75 以上才挽回得了，"
+                        f"目前 {rel['trust_security']}。）")
+        elif rel["trust_security"] >= 55:
+            state["flags"]["affair"] = False
+            # 忠誠太低 → 藕斷絲連，情敵不會真正消失（長期關係/NTR）
+            if loyalty < 35:
+                add_milestone(state, "原諒", "你選擇原諒；她嘴上回到你身邊，但和對方仍藕斷絲連。")
+                note = ("\n（出軌旗標清除，但她忠誠太低——情敵沒有真正退場，這段關係仍在暗處延續，"
+                        "日後極可能再犯。）")
+            else:
+                state["pending_events"] = [e for e in state["pending_events"]
+                                           if e.get("chain") != "rival"]
+                add_milestone(state, "原諒", "你選擇原諒，她痛哭著回到你身邊，傷痕還在但願意重新開始。")
+                note = "\n（出軌已被原諒、旗標清除，但這道疤會留在記憶裡。）"
+        if state.get("relationship", {}).get("affair_count"):
+            note += f"（累計出軌 {rel['affair_count']} 次，再犯機率已升高。）"
     save_state(state)
     write_soul(state, cfg)
     return (f"互動（{q}）：好感 {da:+d} → {rel['affinity']}，安全感 {ds:+d} → "
@@ -624,9 +703,65 @@ def cmd_cronmsg(args, cfg):
         lines.append("  好感偏低：語氣保留一點，或帶點「你最近是不是很忙」的試探。")
     for ev in state.get("pending_events", []):
         if ev.get("chain") == "rival" and ev.get("stage", 0) >= 2:
-            lines.append(f"  ⚠ 可（不經意地）提到 {ev['npc']} 又找她，觀察對方反應。")
+            lines.append(f"  ⚠ 可（不經意地）提到 {_rival_name(ev)} 又找她，觀察對方反應。")
             break
     return "\n".join(lines)
+
+
+# ── 玩家對情敵的主導：吃醋警告 / 要她設界線 / 表達信任 ──────────
+def cmd_rival(args, cfg):
+    state = load_state()
+    if not state or not state.get("active"):
+        return "目前沒有進行中的關係。"
+    rel, persona = state["relationship"], state["persona"]
+    active = next((e for e in state.get("pending_events", []) if e.get("chain") == "rival"), None)
+    if not active:
+        return "目前沒有情敵在糾纏她，不用緊張。"
+    name = _rival_name(active)
+    act = args.action
+
+    if act == "warn":
+        rel["trust_security"] = clamp(rel["trust_security"] + 8)
+        active["stage"] = max(0, active.get("stage", 0) - 1)
+        if persona.get("jealousy", 50) < 35:
+            rel["affinity"] = clamp(rel["affinity"] - 3)
+            msg = (f"你出面警告 {name}、宣示主權。她嫌你管太多、不太需要你出頭（好感-3），"
+                   "但心底其實有點被在乎到（安全感+8，情敵退一步）。")
+        else:
+            msg = (f"你出面警告 {name}、宣示主權。她心裡甜滋滋、覺得被你重視"
+                   "（安全感+8，情敵退一步）。")
+    elif act == "boundary":
+        if rel["trust_security"] >= 45 and rel["affinity"] >= 45:
+            state["pending_events"] = [e for e in state["pending_events"] if e is not active]
+            rel["trust_security"] = clamp(rel["trust_security"] + 10)
+            rel["mood"] = "開心"
+            add_milestone(state, "劃清界線", f"她為你和 {_rival_label(active)} 劃清了界線。")
+            msg = (f"你請她和 {name} 保持距離。她夠在乎你、也有安全感，於是答應了，"
+                   "主動和對方劃清界線（安全感+10，情敵退場）。")
+        else:
+            rel["trust_security"] = clamp(rel["trust_security"] + 3)
+            msg = (f"你請她和 {name} 保持距離。但她現在對你們沒把握，反應為難、敷衍"
+                   "（只 +3，情敵仍在）——先把好感/安全感養起來再要求。")
+    elif act == "trust":
+        wavering_risk = active.get("stage", 0) >= 2 and rel["trust_security"] < 45
+        rel["trust_security"] = clamp(rel["trust_security"] + 5)
+        if wavering_risk:
+            active["stage"] = min(3, active.get("stage", 0) + 1)
+            msg = (f"你說你相信她、不干涉。她感動，但她此刻正在動搖——你的大度被當成不夠在乎，"
+                   f"反而把她往 {name} 推了一步（風險！）。")
+        else:
+            if rel["mood"] in ("不安", "低落"):
+                rel["mood"] = "普通"
+            msg = "你說你相信她、不干涉。她很感動，覺得被尊重，更想對你忠誠（安全感+5）。"
+    else:
+        return "用法：rival warn|boundary|trust"
+
+    still = active in state.get("pending_events", [])
+    save_state(state)
+    write_soul(state, cfg)
+    tail = (f"情敵 {name} 階段 {active.get('stage')}/3" if still else f"情敵 {name} 已退場")
+    return (msg + f"\n（現況：安全感 {rel['trust_security']}、好感 {rel['affinity']}、{tail}。"
+            "請以她的個性把上面的反應演出來。）")
 
 
 # ── status ──────────────────────────────────────────────────
@@ -642,7 +777,7 @@ def cmd_status(args, cfg):
     out = [
         f"● {p['name']}（{p['gender']}/{p['age']}/{p['archetype']}）",
         f"  階段：{rel['stage']}｜好感 {rel['affinity']}/100｜安全感 {rel['trust_security']}/100",
-        f"  心情：{rel['mood']}｜親密度 {rel.get('intimacy_level',0)}/5｜主動度 {p['proactivity']}",
+        f"  心情：{rel['mood']}｜親密度 {rel.get('intimacy_level',0)}/5｜主動度 {p['proactivity']}｜忠誠 {p.get('loyalty',60)}",
         f"  互動 {c['interaction_count']} 次｜在本階段 {days_between(c.get('stage_entered_at', c['started_at']))} 天",
     ]
     idx = stage_index(rel["stage"])
@@ -650,12 +785,16 @@ def cmd_status(args, cfg):
         nxt = STAGES[idx + 1]
         ok, why = _eligible(state, cfg, nxt)
         out.append(f"  下一步「{nxt}」：{'✓ 可推進' if ok else why}")
-    if state["flags"].get("affair"):
-        out.append("  ⚠ 出軌旗標亮起：需原諒（interact sweet）或分手。")
+    if state["flags"].get("leaving"):
+        out.append("  💔 她正準備為情敵離開你：需 interact sweet 把安全感拉到 75↑ 才挽回，否則只能分手。")
+    elif state["flags"].get("affair"):
+        out.append("  ⚠ 出軌旗標亮起：需原諒（interact sweet 重建≥55）或分手。")
+    if rel.get("affair_count"):
+        out.append(f"  出軌前科：{rel['affair_count']} 次（再犯機率已升高）")
     evs = [e for e in state.get("pending_events", []) if e.get("chain") == "rival"]
     if evs:
         e = evs[0]
-        out.append(f"  情敵：{e['npc']}（階段 {e['stage']}/3）")
+        out.append(f"  情敵：{_rival_label(e)} 魅力{e.get('allure','?')}｜階段 {e['stage']}/3")
     ms = state.get("milestones", [])
     if ms:
         out.append("  里程碑：" + "、".join(f"{m['type']}" for m in ms[-5:]))
@@ -718,6 +857,9 @@ def build_parser():
 
     sub.add_parser("intimacy")
 
+    sp = sub.add_parser("rival")
+    sp.add_argument("action", choices=["warn", "boundary", "trust"])
+
     sp = sub.add_parser("cron-msg")
     sp.add_argument("--slot", choices=["morning", "noon", "evening", "night"], default=None)
     sp.add_argument("--seed", type=int, default=None)
@@ -733,6 +875,7 @@ DISPATCH = {
     "rerender": cmd_rerender,
     "checkin": cmd_checkin, "interact": cmd_interact, "advance": cmd_advance,
     "regress": cmd_regress, "propose": cmd_propose, "intimacy": cmd_intimacy,
+    "rival": cmd_rival,
     "breakup": cmd_breakup, "cron-msg": cmd_cronmsg, "config": cmd_config,
 }
 
