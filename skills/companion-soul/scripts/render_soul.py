@@ -90,7 +90,11 @@ def _intimacy_section(state, config):
     return "\n".join(lines)
 
 
-def _appearance_section(persona, config):
+# 私密部位類別：只在「親密場景」且戀人以上才描寫；平時最多用穿著/反應暗示
+PRIVATE_CATS = {"乳暈", "乳尖", "胸感", "敏", "私"}
+
+
+def _appearance_section(persona, config, stage="初識"):
     """由 persona['appearance'] 算繪「我的外貌」段。舊資料無此欄位則回空字串。"""
     ap = persona.get("appearance")
     if not ap:
@@ -115,14 +119,40 @@ def _appearance_section(persona, config):
         lines.append(f"- 穿衣風格：{ap['style']}")
     if ap.get("feature"):
         lines.append(f"- 記憶點：{ap['feature']}")
-    # 特殊屬性（抽卡稀有度）：親密 off 時不顯示
+    # 特殊屬性（抽卡稀有度）：親密 off 時不顯示；私密類別標注
     traits = persona.get("special_traits") or []
+    has_private = False
     if traits and mode != "off":
         marks = {"普通": "⚪", "稀有": "🔵", "史詩": "🟣", "傳說": "🌟"}
-        shown = "、".join(f"{marks.get(t['rarity'],'')}[{t['rarity']}] {t['name']}"
-                          for t in traits)
-        lines.append(f"- ✨特殊屬性：{shown}")
-    lines += ["", "（描述我的樣子、動作或親密場景時，請符合上面的外貌與特殊屬性設定。）"]
+        parts = []
+        for t in traits:
+            tag = "（私密）" if t.get("cat") in PRIVATE_CATS else ""
+            if tag:
+                has_private = True
+            parts.append(f"{marks.get(t['rarity'],'')}[{t['rarity']}] {t['name']}{tag}")
+        lines.append(f"- ✨特殊屬性：{'、'.join(parts)}")
+
+    # ── 呈現規則（依關係階段與個性決定揭露尺度）──
+    idx = stage_index(stage)
+    lines += ["", "### 這些外貌怎麼呈現（重要）", ""]
+    lines.append("- 別像報菜名一次全講；讓特質**融入動作與情緒**——撥髮、被稱讚會臉紅、"
+                 "緊張摸耳垂、走近時聞到體香——比直接描述更自然。")
+    lines.append("- 揭露大方或害羞，要**符合我的個性與當下心情**（傲嬌嘴硬、高冷克制、"
+                 "活潑大方、文靜害羞）。")
+    if idx <= 1:  # 初識 / 朋友
+        lines.append("- **現在是「{}」階段**：只在穿著、髮型、身高、氣質、聲線、淡淡體香、"
+                     "笑起來的記憶點這些**看得到的層面**呈現。**不要**描寫身材露骨細節，"
+                     "**私密部位完全不提**（連暗示都節制）。".format(stage))
+    elif idx == 2:  # 曖昧
+        lines.append("- **現在是「曖昧」階段**：可以有若有似無的身體張力——不小心瞄到事業線、"
+                     "肢體靠近的心跳——但**點到為止**；私密部位仍**不直接描寫**，最多穿著或害羞反應暗示。")
+    else:  # 戀人以上
+        lines.append("- **現在是「{}」階段**：身體互動可以自在。標記「（私密）」的部位"
+                     "（乳尖／乳暈／敏感帶／私密體質等）**只在親密場景中**描寫，"
+                     "且依親密尺度設定與我的害羞度演出，平常對話不會主動拿出來講。".format(stage))
+    if has_private and idx <= 2:
+        lines.append("- ⚠️ 我身上標「（私密）」的特質目前是**隱藏設定**，要到戀人階段的親密場景才會顯現，"
+                     "現在請當作還沒被你發現。")
     return "\n".join(lines)
 
 
@@ -170,7 +200,7 @@ def render(state, config=None):
         "{{LIFE_HOBBIES}}": "、".join(life.get("hobbies", [])),
         "{{LIFE_ARC}}": life.get("current_arc", ""),
         "{{RIVAL_HINT}}": rival_hint,
-        "{{APPEARANCE_SECTION}}": _appearance_section(p, config),
+        "{{APPEARANCE_SECTION}}": _appearance_section(p, config, stage),
         "{{INTIMACY_SECTION}}": _intimacy_section(state, config),
     }
     for k, v in repl.items():
