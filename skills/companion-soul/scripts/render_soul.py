@@ -115,7 +115,14 @@ def _appearance_section(persona, config):
         lines.append(f"- 穿衣風格：{ap['style']}")
     if ap.get("feature"):
         lines.append(f"- 記憶點：{ap['feature']}")
-    lines += ["", "（描述我的樣子、動作或親密場景時，請符合上面的外貌設定。）"]
+    # 特殊屬性（抽卡稀有度）：親密 off 時不顯示
+    traits = persona.get("special_traits") or []
+    if traits and mode != "off":
+        marks = {"普通": "⚪", "稀有": "🔵", "史詩": "🟣", "傳說": "🌟"}
+        shown = "、".join(f"{marks.get(t['rarity'],'')}[{t['rarity']}] {t['name']}"
+                          for t in traits)
+        lines.append(f"- ✨特殊屬性：{shown}")
+    lines += ["", "（描述我的樣子、動作或親密場景時，請符合上面的外貌與特殊屬性設定。）"]
     return "\n".join(lines)
 
 

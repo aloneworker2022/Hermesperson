@@ -84,6 +84,7 @@ python3 scripts/relationship.py <command>
 - `allow_archetypes`：逗號分隔，加入可選原型如 `病嬌`
 - `user_gender` / `user_pet_name`：影響她對你的稱呼
 - `neglect_grace_days`：幾天不理才開始衰退（預設 1）
+- `rare_luck`：特殊屬性抽卡幸運值 0~100，越高越容易抽到史詩/傳說（預設 0）
 
 ## 細節參考（需要時再讀）
 - `references/personalities.md` — 各原型完整演出手冊

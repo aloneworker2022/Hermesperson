@@ -144,6 +144,91 @@ FEATURE = ["左臉笑起來有個酒窩", "有顆小虎牙", "鎖骨上有一顆
            "聲音偏甜、有點黏", "脖子細長好看", "手指修長", "笑聲很有感染力",
            "耳朵很小、容易紅", "嘴唇飽滿"]
 
+# ── 特殊屬性（抽卡稀有度系統）─────────────────────────────────
+# 每個人會抽 1~3 個「香豔」特殊屬性；越露骨越稀有。
+# rarity 權重越高越常見。cat 用來避免同類重複（例如兩種膚色/瞳色）。
+RARITY_WEIGHT = {"普通": 60, "稀有": 28, "史詩": 10, "傳說": 2}
+RARITY_MARK = {"普通": "⚪", "稀有": "🔵", "史詩": "🟣", "傳說": "🌟"}
+
+# (name, rarity, cat) — gender 預設女；男生另有一組
+SPECIAL_TRAITS = {
+    "女": [
+        # 普通
+        ("紅潤飽滿的雙唇", "普通", "唇"),
+        ("白皙細嫩的皮膚", "普通", "膚"),
+        ("筆直美腿", "普通", "腿"),
+        ("纖細小蠻腰", "普通", "腰"),
+        ("形狀漂亮的美胸", "普通", "胸"),
+        ("水潤的杏眼", "普通", "瞳"),
+        # 稀有
+        ("巨乳", "稀有", "胸"),
+        ("修長大長腿", "稀有", "腿"),
+        ("緊實蜜大腿", "稀有", "腿"),
+        ("渾圓翹臀", "稀有", "臀"),
+        ("古銅小麥膚色", "稀有", "膚"),
+        ("細腰豐臀的沙漏身材", "稀有", "身"),
+        ("水汪汪的大眼", "稀有", "瞳"),
+        # 史詩
+        ("白皙大長腿", "史詩", "腿"),
+        ("沉甸甸的下垂巨乳", "史詩", "胸"),
+        ("粉嫩飽滿、面積偏大的乳暈", "史詩", "乳暈"),
+        ("通透的雪白肌膚", "史詩", "膚"),
+        ("湛藍色的眼睛", "史詩", "瞳"),
+        ("爆乳配上不科學的細腰", "史詩", "身"),
+        # 傳說
+        ("赤紅色的眼睛", "傳說", "瞳"),
+        ("左右異色的雙瞳", "傳說", "瞳"),
+        ("宛如模特兒的黃金三圍", "傳說", "身"),
+        ("吹彈可破、會發光似的奶白肌", "傳說", "膚"),
+    ],
+    "男": [
+        ("結實的胸肌", "普通", "胸"),
+        ("乾淨的薄肌線條", "普通", "身"),
+        ("修長筆直的腿", "普通", "腿"),
+        ("好看的喉結", "普通", "頸"),
+        ("分明的六塊腹肌", "稀有", "腹"),
+        ("性感的人魚線", "稀有", "腰"),
+        ("古銅色健康膚色", "稀有", "膚"),
+        ("寬肩窄腰的倒三角身材", "稀有", "身"),
+        ("巧克力色的精壯肌肉", "史詩", "身"),
+        ("湛藍色的眼睛", "史詩", "瞳"),
+        ("高大挺拔的大長腿", "史詩", "腿"),
+        ("赤紅色的眼睛", "傳說", "瞳"),
+        ("左右異色的雙瞳", "傳說", "瞳"),
+        ("雕塑般完美的軀體", "傳說", "身"),
+    ],
+}
+RARITY_ORDER = ["普通", "稀有", "史詩", "傳說"]
+
+
+def roll_special_traits(gender, luck=0):
+    """抽 1~3 個特殊屬性（依稀有度加權、同類不重複）。
+    luck>0 會提高高稀有度權重（0~100）。回傳 [{name,rarity,cat}]。"""
+    pool = SPECIAL_TRAITS.get(gender, SPECIAL_TRAITS["女"])
+    boost = max(0, min(100, luck)) / 100.0
+    # 抽幾個：基本 1 個，50% 再一個，20% 再一個
+    count = 1 + (1 if random.random() < 0.5 + boost * 0.3 else 0) \
+              + (1 if random.random() < 0.2 + boost * 0.3 else 0)
+    chosen, used_cats = [], set()
+    candidates = list(pool)
+    for _ in range(count):
+        avail = [t for t in candidates if t[2] not in used_cats]
+        if not avail:
+            break
+        weights = []
+        for _n, rarity, _c in avail:
+            w = RARITY_WEIGHT[rarity]
+            # luck 把權重往高稀有度傾斜
+            tier = RARITY_ORDER.index(rarity)
+            w = w * (1 + boost * tier)
+            weights.append(w)
+        name, rarity, cat = random.choices(avail, weights=weights, k=1)[0]
+        chosen.append({"name": name, "rarity": rarity, "cat": cat})
+        used_cats.add(cat)
+    # 依稀有度排序（高在前）
+    chosen.sort(key=lambda t: -RARITY_ORDER.index(t["rarity"]))
+    return chosen
+
 
 def _pick_n(pool, n):
     return random.sample(pool, min(n, len(pool)))
@@ -167,8 +252,8 @@ def generate_appearance(gender):
     }
 
 
-def generate_persona(gender=None, allow_optional=None):
-    """產生一份人格 dict。gender: '女'/'男'/None(隨機)。"""
+def generate_persona(gender=None, allow_optional=None, luck=0):
+    """產生一份人格 dict。gender: '女'/'男'/None(隨機)。luck: 特殊屬性幸運值 0~100。"""
     if gender not in ("女", "男"):
         gender = random.choice(["女", "男"])
     allow_optional = set(allow_optional or [])
@@ -197,6 +282,7 @@ def generate_persona(gender=None, allow_optional=None):
         "dislikes": _pick_n(DISLIKES, 2),
         "quirk": quirk,
         "appearance": generate_appearance(gender),
+        "special_traits": roll_special_traits(gender, luck),
         "contrast": f"是{archetype}的人，但{quirk}",  # 反差小設定
         "life": {
             "occupation": occupation,
@@ -216,11 +302,13 @@ def main():
     ap = argparse.ArgumentParser(description="生成一份人格（JSON）")
     ap.add_argument("--gender", choices=["女", "男"], default=None)
     ap.add_argument("--allow", nargs="*", default=[], help="允許抽到的可選原型，如 病嬌")
+    ap.add_argument("--luck", type=int, default=0, help="特殊屬性幸運值 0~100（越高越容易抽到高稀有度）")
     ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
     if args.seed is not None:
         random.seed(args.seed)
-    print(json.dumps(generate_persona(args.gender, args.allow), ensure_ascii=False, indent=2))
+    print(json.dumps(generate_persona(args.gender, args.allow, args.luck),
+                     ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

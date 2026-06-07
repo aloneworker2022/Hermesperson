@@ -90,6 +90,7 @@ DEFAULT_CONFIG = {
     "user_gender": None,           # 影響夫妻階段稱呼（老公/老婆）
     "user_pet_name": None,         # 自訂她對你的稱呼
     "neglect_grace_days": 1,       # 幾天不理才開始衰退
+    "rare_luck": 0,                # 特殊屬性幸運值 0~100（越高越容易抽到高稀有度）
 }
 
 
@@ -194,17 +195,26 @@ def cmd_newpersona(args, cfg):
                     "要開始新的人，請先 `breakup`（或加 --force）。".format(
                         state["persona"]["name"], rel.get("stage")))
     gender = args.gender or (None if cfg["gender_pref"] == "random" else cfg["gender_pref"])
-    persona = persona_gen.generate_persona(gender, cfg.get("allow_archetypes"))
+    luck = int(cfg.get("rare_luck") or 0)
+    persona = persona_gen.generate_persona(gender, cfg.get("allow_archetypes"), luck)
     backup_soul_once()
     state = new_state(persona)
     save_state(state)
     write_soul(state, cfg)
     p = persona
-    return ("✦ 你遇見了一個新的人。\n"
+    marks = persona_gen.RARITY_MARK
+    traits = p.get("special_traits") or []
+    trait_str = "、".join(f"{marks.get(t['rarity'],'')}[{t['rarity']}]{t['name']}" for t in traits)
+    top = max((t["rarity"] for t in traits), key=persona_gen.RARITY_ORDER.index) if traits else None
+    head = "✦ 你遇見了一個新的人。"
+    if top in ("史詩", "傳說"):
+        head = f"{marks.get(top)}★ 稀有相遇！抽到了「{top}」級特殊屬性！ {marks.get(top)}\n" + head
+    return (head + "\n"
             f"  名字：{p['name']}（{p['gender']}，{p['age']}）\n"
             f"  個性：{p['archetype']} — {p['contrast']}\n"
             f"  職業：{p['occupation']}　主動度：{p['proactivity']}/100\n"
             f"  喜歡：{'、'.join(p['likes'])}\n"
+            f"  ✨特殊屬性：{trait_str or '無'}\n"
             f"  SOUL.md 已改寫。請以「初次見面」的口吻、用 {p['name']} 的身分開場。")
 
 
