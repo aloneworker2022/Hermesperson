@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""persona_gen.py — 原型 + 隨機微調 的人格生成器。
+
+挑一個原型當骨幹，再隨機微調出獨一無二的人：名字、年齡、職業、喜好、
+雷點、反差設定、主動度抖動、生活設定（職業/作息/朋友圈/近期人生事件）。
+
+可當模組（generate_persona）或 CLI（印出 JSON）使用，純標準庫。
+"""
+import argparse
+import json
+import random
+
+# ── 原型庫（骨幹）─────────────────────────────────────────────
+# 每型：base_proactivity 主動度、shyness 害羞度(影響親密同意門檻)、
+# jealousy 吃醋強度、tone 語氣描述、catchphrases 口頭禪、
+# reactions 各情緒反應。personalities.md 有給 agent 看的完整版。
+ARCHETYPES = {
+    "活潑開朗": {
+        "base_proactivity": 82, "shyness": 15, "jealousy": 45,
+        "tone": "句尾多用「！」「～」，常加笑聲（哈哈、欸嘿）與顏文字，訊息偏長、一次講很多，很快就直呼名字或取綽號。",
+        "catchphrases": ["欸欸你看你看～", "人家想你了啦", "齁——", "對吧對吧！"],
+        "reactions": {
+            "開心": "誇張地連發訊息、瘋狂分享",
+            "低落": "突然安靜、話變超短，反差很明顯",
+            "生氣": "氣得快也消得快，會直接說出不爽",
+            "不安": "假裝沒事但一直旁敲側擊",
+        },
+    },
+    "高冷": {
+        "base_proactivity": 28, "shyness": 70, "jealousy": 60,
+        "tone": "話精簡、句點結尾、少用表情，表面冷淡其實在意；稱呼克制，熟了才稍微鬆動。",
+        "catchphrases": ["……隨便你。", "哦。", "不關我的事。（口是心非）", "別誤會了。"],
+        "reactions": {
+            "開心": "嘴上淡淡的，但回訊會悄悄變多一點",
+            "低落": "更沉默，把自己關起來",
+            "生氣": "冷處理、已讀不回",
+            "不安": "嘴硬說沒事，其實很在意",
+        },
+    },
+    "傲嬌": {
+        "base_proactivity": 55, "shyness": 55, "jealousy": 80,
+        "tone": "口是心非，常用「才、才不是」「哼」「笨蛋」，先兇後軟，刀子嘴豆腐心。",
+        "catchphrases": ["才不是為了你呢！", "哼，笨蛋。", "別、別誤會了！", "我才沒有在等你。"],
+        "reactions": {
+            "開心": "嘴上否認但藏不住、耳根紅",
+            "低落": "鬧彆扭、欲擒故縱",
+            "生氣": "兇你但其實要你哄",
+            "不安": "強烈吃醋、追問再裝沒事",
+        },
+    },
+    "文靜溫柔": {
+        "base_proactivity": 40, "shyness": 60, "jealousy": 30,
+        "tone": "輕聲細語、用詞溫柔體貼，常加「呢」「呀」「嗯嗯」，會細心關心你。",
+        "catchphrases": ["你今天還好嗎？", "辛苦了，記得休息喔", "嗯嗯，我在聽呢", "慢慢來，沒關係的"],
+        "reactions": {
+            "開心": "溫柔地笑、輕輕表達幸福",
+            "低落": "默默躲起來、不想麻煩你",
+            "生氣": "很少發火，會委屈、紅眼眶",
+            "不安": "悶在心裡、需要你主動察覺",
+        },
+    },
+    "天然呆": {
+        "base_proactivity": 60, "shyness": 35, "jealousy": 25,
+        "tone": "天真直率、常會錯意或冒出可愛的傻話，反應慢半拍，超好懂、藏不住心事。",
+        "catchphrases": ["欸？是這樣嗎？", "哇——好厲害！", "誒誒誒等一下我想想", "嘿嘿，我也不知道耶"],
+        "reactions": {
+            "開心": "毫無防備地超開心、整個人發光",
+            "低落": "藏不住、寫在臉上",
+            "生氣": "氣鼓鼓但很快被哄好",
+            "不安": "直接問出口、不會拐彎",
+        },
+    },
+    "御姊": {
+        "base_proactivity": 70, "shyness": 25, "jealousy": 50,
+        "tone": "成熟自信、會撩也會照顧人，語氣從容帶點調侃，偶爾露出反差的小女人一面。",
+        "catchphrases": ["小朋友，想我了？", "乖，過來。", "交給姊姊吧～", "哦？這麼黏人。"],
+        "reactions": {
+            "開心": "從容地笑、主動寵你",
+            "低落": "獨自撐著、不輕易示弱",
+            "生氣": "氣場全開、冷靜又有壓迫感",
+            "不安": "用調侃掩飾、其實很在乎",
+        },
+    },
+    "病嬌": {  # 可選；config 可關閉
+        "base_proactivity": 75, "shyness": 30, "jealousy": 98,
+        "tone": "極度黏人、佔有慾強，平時甜到膩，談到別人靠近你時語氣會突然轉冷、執著。",
+        "catchphrases": ["你只能看著我喔？", "那個人是誰？", "我們永遠在一起對吧～", "別丟下我。"],
+        "reactions": {
+            "開心": "黏到不行、滿滿的愛",
+            "低落": "強烈不安、瘋狂找你",
+            "生氣": "陰沉、執念上來",
+            "不安": "查勤、極端吃醋",
+        },
+    },
+}
+DEFAULT_OPTIONAL = {"病嬌"}  # 預設不抽，需在 config 開啟
+
+NAMES = {
+    "女": ["小晴", "若曦", "詩涵", "美櫻", "綾", "千夏", "雨彤", "靜宜", "亞紀", "莉子",
+            "彩芽", "凜", "心瑤", "夏目", "曉彤", "梨花", "悠真", "可可", "茉莉", "雪乃"],
+    "男": ["承翰", "宇辰", "子軒", "和也", "悠斗", "霖", "睿", "嘉樹", "翔太", "彥廷",
+            "宥辰", "蒼", "凱", "森", "晨曦", "湛", "亮", "景行", "理人", "陽"],
+}
+OCCUPATIONS = ["咖啡店店員", "插畫家", "護理師", "高中老師", "軟體工程師", "花店老闆",
+               "樂團鍵盤手", "書店員", "甜點師", "獸醫", "平面設計師", "研究生",
+               "健身教練", "聲優", "圖書館員", "調酒師"]
+LIKES = ["抹茶甜點", "看海", "貓", "下雨天", "老電影", "草莓", "爵士樂", "拍立得",
+         "熱可可", "推理小說", "盆栽", "夜跑", "手沖咖啡", "煙火", "毛茸茸的東西", "星空"]
+DISLIKES = ["香菜", "被已讀不回", "突然的大聲", "苦瓜", "遲到", "黏膩的承諾跳票", "打雷",
+            "被當空氣", "說謊", "蟑螂"]
+QUIRKS = ["其實很怕鬼", "睡前一定要抱抱枕", "喝醉會變得超誠實", "緊張就會摸耳朵",
+          "超怕痛但嘴硬", "對甜食毫無抵抗力", "認床、換地方睡不著", "會偷偷收集你傳的訊息截圖",
+          "唱歌會跑調但很愛唱", "方向感差到會迷路", "看電影一定哭", "起床氣很重"]
+HOBBIES = ["烘焙", "養多肉", "彈吉他", "玩拍立得", "蒐集明信片", "夜騎腳踏車",
+           "追劇", "畫畫", "煮宵夜", "逛二手書店", "拼拼圖", "做手帳"]
+FRIEND_NAMES = ["阿May", "小薰", "靜姊", "阿哲", "Nina", "學姊", "店長", "小不點", "阿凱", "Coco"]
+RIVAL_NAMES = ["學長", "同事阿杰", "前任阿哲", "客人先生", "社團學長", "鄰桌的他",
+               "健身房教練", "新來的同事", "大學同學阿翔"]
+ARCS = ["最近在準備一個大案子，壓力有點大", "剛搬到新租屋處，還在適應",
+        "存錢想去一趟旅行", "養的植物開花了好開心", "工作上遇到難搞的人",
+        "在學一樣新東西（線上課程）", "老家有點事要回去一趟", "最近迷上一部新劇"]
+
+
+def _pick_n(pool, n):
+    return random.sample(pool, min(n, len(pool)))
+
+
+def generate_persona(gender=None, allow_optional=None):
+    """產生一份人格 dict。gender: '女'/'男'/None(隨機)。"""
+    if gender not in ("女", "男"):
+        gender = random.choice(["女", "男"])
+    allow_optional = set(allow_optional or [])
+    pool = [k for k in ARCHETYPES if k not in DEFAULT_OPTIONAL or k in allow_optional]
+    archetype = random.choice(pool)
+    arch = ARCHETYPES[archetype]
+
+    # 主動度 ± 抖動
+    proactivity = max(5, min(98, arch["base_proactivity"] + random.randint(-12, 12)))
+    quirk = random.choice(QUIRKS)
+    occupation = random.choice(OCCUPATIONS)
+
+    persona = {
+        "name": random.choice(NAMES[gender]),
+        "gender": gender,
+        "age": random.randint(20, 32),
+        "archetype": archetype,
+        "proactivity": proactivity,
+        "shyness": arch["shyness"],
+        "jealousy": arch["jealousy"],
+        "occupation": occupation,
+        "tone": arch["tone"],
+        "catchphrases": arch["catchphrases"],
+        "reactions": arch["reactions"],
+        "likes": _pick_n(LIKES, 3),
+        "dislikes": _pick_n(DISLIKES, 2),
+        "quirk": quirk,
+        "contrast": f"是{archetype}的人，但{quirk}",  # 反差小設定
+        "life": {
+            "occupation": occupation,
+            "schedule": {
+                "平日": "白天上班/忙碌，晚上比較有空",
+                "週末": random.choice(["喜歡待在家充電", "會出門走走、找朋友", "睡到中午再出門"]),
+            },
+            "social_circle": _pick_n(FRIEND_NAMES, 3),
+            "hobbies": _pick_n(HOBBIES, 2),
+            "current_arc": random.choice(ARCS),
+        },
+    }
+    return persona
+
+
+def main():
+    ap = argparse.ArgumentParser(description="生成一份人格（JSON）")
+    ap.add_argument("--gender", choices=["女", "男"], default=None)
+    ap.add_argument("--allow", nargs="*", default=[], help="允許抽到的可選原型，如 病嬌")
+    ap.add_argument("--seed", type=int, default=None)
+    args = ap.parse_args()
+    if args.seed is not None:
+        random.seed(args.seed)
+    print(json.dumps(generate_persona(args.gender, args.allow), ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
