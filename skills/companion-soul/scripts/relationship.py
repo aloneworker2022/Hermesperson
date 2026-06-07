@@ -215,6 +215,16 @@ def cmd_restore(args, cfg):
     return "已把 SOUL.md 還原成最初的版本（感情狀態仍保留在 state.json）。"
 
 
+def cmd_rerender(args, cfg):
+    """用目前的 state 重新算繪 SOUL.md，不改動任何關係狀態。
+    模板更新後（例如新增系統指令層）讓現有對象就地套用，不必分手重來。"""
+    state = load_state()
+    if not state or not state.get("active"):
+        return "目前沒有進行中的對象，沒有可重繪的 SOUL.md。"
+    write_soul(state, cfg)
+    return f"已用最新模板重繪 {state['persona']['name']} 的 SOUL.md（關係狀態不變）。"
+
+
 # ── checkin：衰退 + 事件 + life-log ──────────────────────────
 LIFE_LOG_TEMPLATES = [
     "今天{occupation}的工作{flavor}",
@@ -676,6 +686,7 @@ def build_parser():
 
     sub.add_parser("status")
     sub.add_parser("restore")
+    sub.add_parser("rerender")
     sub.add_parser("breakup").add_argument("--reason", default=None)
 
     sp = sub.add_parser("newpersona")
@@ -709,6 +720,7 @@ def build_parser():
 
 DISPATCH = {
     "status": cmd_status, "newpersona": cmd_newpersona, "restore": cmd_restore,
+    "rerender": cmd_rerender,
     "checkin": cmd_checkin, "interact": cmd_interact, "advance": cmd_advance,
     "regress": cmd_regress, "propose": cmd_propose, "intimacy": cmd_intimacy,
     "breakup": cmd_breakup, "cron-msg": cmd_cronmsg, "config": cmd_config,
