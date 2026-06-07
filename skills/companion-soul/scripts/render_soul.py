@@ -90,6 +90,35 @@ def _intimacy_section(state, config):
     return "\n".join(lines)
 
 
+def _appearance_section(persona, config):
+    """由 persona['appearance'] 算繪「我的外貌」段。舊資料無此欄位則回空字串。"""
+    ap = persona.get("appearance")
+    if not ap:
+        return ""
+    mode = (config or {}).get("intimacy_mode", "explicit")
+    lines = ["## 我的外貌", ""]
+    if ap.get("height_cm"):
+        lines.append(f"- 身高：約 {ap['height_cm']} 公分")
+    if ap.get("build"):
+        lines.append(f"- 體型：{ap['build']}")
+    # 較露骨的身材描述：親密設為 off 時略過
+    if mode != "off":
+        if ap.get("bust"):
+            lines.append(f"- 身材：{ap['bust']}")
+        elif ap.get("physique"):
+            lines.append(f"- 身材：{ap['physique']}")
+    if ap.get("hair"):
+        lines.append(f"- 髮型：{ap['hair']}")
+    if ap.get("eyes"):
+        lines.append(f"- 眼睛：{ap['eyes']}")
+    if ap.get("style"):
+        lines.append(f"- 穿衣風格：{ap['style']}")
+    if ap.get("feature"):
+        lines.append(f"- 記憶點：{ap['feature']}")
+    lines += ["", "（描述我的樣子、動作或親密場景時，請符合上面的外貌設定。）"]
+    return "\n".join(lines)
+
+
 def render(state, config=None):
     """回傳算繪好的 SOUL.md 字串。"""
     config = config or {}
@@ -134,6 +163,7 @@ def render(state, config=None):
         "{{LIFE_HOBBIES}}": "、".join(life.get("hobbies", [])),
         "{{LIFE_ARC}}": life.get("current_arc", ""),
         "{{RIVAL_HINT}}": rival_hint,
+        "{{APPEARANCE_SECTION}}": _appearance_section(p, config),
         "{{INTIMACY_SECTION}}": _intimacy_section(state, config),
     }
     for k, v in repl.items():

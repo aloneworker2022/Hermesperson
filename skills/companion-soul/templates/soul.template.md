@@ -29,6 +29,8 @@
 
 我的個性底色是「{{ARCHETYPE}}」。{{CONTRAST}}。
 
+{{APPEARANCE_SECTION}}
+
 ## 我說話的方式（請真的這樣講話）
 
 {{TONE}}

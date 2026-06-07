@@ -121,9 +121,50 @@ ARCS = ["最近在準備一個大案子，壓力有點大", "剛搬到新租屋�
         "存錢想去一趟旅行", "養的植物開花了好開心", "工作上遇到難搞的人",
         "在學一樣新東西（線上課程）", "老家有點事要回去一趟", "最近迷上一部新劇"]
 
+# ── 外貌/身材庫 ───────────────────────────────────────────────
+BUILD = {
+    "女": ["纖細苗條", "勻稱有致", "豐滿火辣", "嬌小玲瓏", "運動健美", "肉感微肉"],
+    "男": ["精瘦修長", "勻稱結實", "高大壯碩", "健美肌肉線條", "斯文清瘦"],
+}
+BUST = ["A 罩杯、小巧", "B 罩杯、剛好", "C 罩杯、勻稱", "D 罩杯、豐滿", "E 罩杯、傲人"]
+MALE_PHYSIQUE = ["薄肌、線條乾淨", "胸肌結實、有點腹肌", "明顯六塊腹肌", "寬肩窄腰、衣架子身材"]
+HAIR = {
+    "女": ["烏黑長直髮", "及肩棕色微捲", "俏麗短髮", "栗色大波浪", "高馬尾、俐落",
+            "亞麻色空氣瀏海", "黑色丸子頭", "鎖骨長度的內彎髮"],
+    "男": ["清爽短髮", "微亂的中長瀏海", "俐落寸頭", "棕色燙髮、有層次",
+            "黑髮側分、乾淨", "微長瀏海遮眉、慵懶感"],
+}
+EYES = ["圓圓的杏眼、很有神", "細長的丹鳳眼", "下垂眼、看起來很溫柔", "笑起來瞇成月牙",
+        "大眼睛、睫毛很長", "瞳色偏淺、像貓"]
+STYLE = {
+    "女": ["簡約日系", "甜美洋裝風", "街頭 oversize", "知性 OL", "清新文青", "性感俐落", "森林系"],
+    "男": ["簡約乾淨", "街頭休閒", "知性襯衫", "運動機能風", "文青針織", "成熟西裝感"],
+}
+FEATURE = ["左臉笑起來有個酒窩", "有顆小虎牙", "鎖骨上有一顆痣", "眼角有淚痣",
+           "聲音偏甜、有點黏", "脖子細長好看", "手指修長", "笑聲很有感染力",
+           "耳朵很小、容易紅", "嘴唇飽滿"]
+
 
 def _pick_n(pool, n):
     return random.sample(pool, min(n, len(pool)))
+
+
+def generate_appearance(gender):
+    """產生外貌/身材 dict（依性別給不同欄位）。"""
+    if gender == "女":
+        height = random.randint(150, 172)
+        figure = {"build": random.choice(BUILD["女"]), "bust": random.choice(BUST)}
+    else:
+        height = random.randint(168, 188)
+        figure = {"build": random.choice(BUILD["男"]), "physique": random.choice(MALE_PHYSIQUE)}
+    return {
+        "height_cm": height,
+        **figure,
+        "hair": random.choice(HAIR[gender]),
+        "eyes": random.choice(EYES),
+        "style": random.choice(STYLE[gender]),
+        "feature": random.choice(FEATURE),
+    }
 
 
 def generate_persona(gender=None, allow_optional=None):
@@ -155,6 +196,7 @@ def generate_persona(gender=None, allow_optional=None):
         "likes": _pick_n(LIKES, 3),
         "dislikes": _pick_n(DISLIKES, 2),
         "quirk": quirk,
+        "appearance": generate_appearance(gender),
         "contrast": f"是{archetype}的人，但{quirk}",  # 反差小設定
         "life": {
             "occupation": occupation,

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# bye — 跟目前對象分手（= companion breakup）。
+# 用法：bye [理由]
+set -euo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+if [[ -n "${1:-}" ]]; then
+  exec "$BIN_DIR/companion" breakup --reason "$*"
+else
+  exec "$BIN_DIR/companion" breakup
+fi

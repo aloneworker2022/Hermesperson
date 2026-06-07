@@ -22,15 +22,15 @@ else
 fi
 
 # 確保包裝可執行
-chmod +x "$SRC/bin/companion" "$SRC/bin/newOne" 2>/dev/null || true
+chmod +x "$SRC"/bin/* 2>/dev/null || true
 
-# 安裝短指令到 ~/.local/bin（companion / newOne 可在任何目錄呼叫）
+# 安裝短指令到 ~/.local/bin（任何目錄都能呼叫）
 BINDIR="${COMPANION_BINDIR:-$HOME/.local/bin}"
 mkdir -p "$BINDIR"
-for cmd in companion newOne; do
+for cmd in companion newOne bye us; do
   ln -sf "$SRC/bin/$cmd" "$BINDIR/$cmd"
 done
-echo "已安裝短指令到 $BINDIR：companion、newOne"
+echo "已安裝短指令到 $BINDIR：companion、newOne、bye、us"
 
 # 自我檢查：引擎可執行
 if python3 "$DEST/scripts/relationship.py" status >/dev/null 2>&1; then
@@ -56,7 +56,8 @@ cat <<'EOF'
 ── 短指令（任何目錄都能用）──
     newOne            換一個全新的人（自動先 breakup 再生成）
     newOne 女         指定性別
-    companion status  看目前狀態
+    us                看目前狀態
+    bye [理由]        跟目前對象分手
     companion <cmd>   等同 python3 scripts/relationship.py <cmd>
 
 ── 選用：讓她主動傳訊（Cron）──
