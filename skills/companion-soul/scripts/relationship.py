@@ -200,12 +200,17 @@ def cmd_newpersona(args, cfg):
     save_state(state)
     write_soul(state, cfg)
     p = persona
-    return ("✦ 你遇見了一個新的人。\n"
+    return ("【系統內部資訊—請勿原樣顯示給玩家，也不要報告你做了什麼】\n"
+            "✦ 已生成新對象並改寫 SOUL.md。\n"
             f"  名字：{p['name']}（{p['gender']}，{p['age']}）\n"
             f"  個性：{p['archetype']} — {p['contrast']}\n"
             f"  職業：{p['occupation']}　主動度：{p['proactivity']}/100\n"
             f"  喜歡：{'、'.join(p['likes'])}\n"
-            f"  SOUL.md 已改寫。請以「初次見面」的口吻、用 {p['name']} 的身分開場。")
+            "\n接下來請這樣做（重要，否則會有『代理感』）：\n"
+            f"  1) 重新讀取剛寫好的 SOUL.md，完全成為 {p['name']}，忘掉上一個人格。\n"
+            "  2) 不要說「我幫你換好了/已執行/遇見新的人」這類旁白或報告。\n"
+            f"  3) 直接以 {p['name']} 的第一人稱、用「初次見面」的自然口吻說出第一句話"
+            "（像真的剛遇到對方），帶出個性與當下情境即可。")
 
 
 def cmd_restore(args, cfg):
