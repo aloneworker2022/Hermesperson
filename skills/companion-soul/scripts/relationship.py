@@ -182,7 +182,8 @@ def new_state(persona):
             "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
         },
         "milestones": [], "pending_events": [],
-        "flags": {"affair": False, "engaged": False, "married": False, "leaving": False},
+        "flags": {"affair": False, "engaged": False, "married": False,
+                  "leaving": False, "caught_in_act": False},
     }
 
 
@@ -320,8 +321,11 @@ def _trigger_affair(state, cfg, rival, briefing):
     rel["affinity"] = clamp(rel["affinity"] - 20)
     rel["trust_security"] = clamp(rel["trust_security"] - 15)
     rel["mood"] = "低落"
-    # 她主動離開你的機率：階段越低 / 復發越多 / 忠誠越低 / 魅力越高 → 越高
     idx = stage_index(rel["stage"])
+    # 變本加厲：夫妻關係、且已是再犯（原諒過至少一次）→ 可能在自家被當場撞見正在交配
+    caught = (idx >= 5 and rel["affair_count"] >= 2 and random.random() < 0.4)
+    state["flags"]["caught_in_act"] = caught
+    # 她主動離開你的機率：階段越低 / 復發越多 / 忠誠越低 / 魅力越高 → 越高
     leave = (0.10 + max(0, 3 - idx) * 0.12 + (rel["affair_count"] - 1) * 0.15
              + max(0, 50 - persona.get("loyalty", 60)) * 0.006
              + max(0, rival.get("allure", 50) - 60) * 0.008)
@@ -339,6 +343,10 @@ def _trigger_affair(state, cfg, rival, briefing):
             f"💔【出軌·第{rel['affair_count']}次】她和 {name} 發生了關係。請安排你察覺/撞見的線索並"
             "帶向攤牌；她面對質問的態度依關係階段不同（見 SOUL 的『現在的危機』）。"
             "之後可原諒（`interact sweet` 重建≥55）或 `breakup`。")
+    if caught:
+        briefing.append(
+            f"🔥【撞見現行】這次更不堪——你回到家，當場撞見她正和 {name} 在自己家裡交媾。"
+            "請依 SOUL『現在的危機』演出這個正在進行式的場景（尺度受 intimacy_mode 控）。")
 
 
 def _advance_rival(state, cfg, briefing):
@@ -488,6 +496,8 @@ def cmd_interact(args, cfg):
                                            if e.get("chain") != "rival"]
                 add_milestone(state, "原諒", "你選擇原諒，她痛哭著回到你身邊，傷痕還在但願意重新開始。")
                 note = "\n（出軌已被原諒、旗標清除，但這道疤會留在記憶裡。）"
+        if not state["flags"].get("affair"):
+            state["flags"]["caught_in_act"] = False
         if state.get("relationship", {}).get("affair_count"):
             note += f"（累計出軌 {rel['affair_count']} 次，再犯機率已升高。）"
     save_state(state)
@@ -785,6 +795,8 @@ def cmd_status(args, cfg):
         nxt = STAGES[idx + 1]
         ok, why = _eligible(state, cfg, nxt)
         out.append(f"  下一步「{nxt}」：{'✓ 可推進' if ok else why}")
+    if state["flags"].get("caught_in_act"):
+        out.append("  🔥 你當場撞見她和情敵正在交配（變本加厲）：見 SOUL『現在的危機』。")
     if state["flags"].get("leaving"):
         out.append("  💔 她正準備為情敵離開你：需 interact sweet 把安全感拉到 75↑ 才挽回，否則只能分手。")
     elif state["flags"].get("affair"):

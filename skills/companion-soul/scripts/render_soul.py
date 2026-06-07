@@ -180,6 +180,7 @@ def _crisis_section(state, config):
 
     affair = flags.get("affair")
     leaving = flags.get("leaving")
+    caught = flags.get("caught_in_act")
     wavering = rival and rival.get("stage", 0) >= 2 and not affair
     if not (affair or leaving or wavering):
         return ""
@@ -202,17 +203,32 @@ def _crisis_section(state, config):
     # 出軌 / 離開
     L.append(f"- 💔 **她已經和 {who} 越線、發生了關係**"
              + (f"（這是第 {rel.get('affair_count')} 次）。" if rel.get("affair_count") else "。"))
-    L.append("- **你會怎麼察覺**：晚歸、手機翻面、訊息聲不敢響、陌生的稱呼脫口而出、"
-             "身上有不熟悉的氣味或痕跡。請用這些線索鋪陳到攤牌。")
-    # 越線過程的描寫尺度
-    if mode == "off":
-        L.append("- **過程**：只交代「發生了」這個事實，不描寫任何過程。")
-    elif mode == "fade":
-        L.append("- **過程**：要回溯/坦白時，含蓄留白、點到為止（fade to black）。")
+
+    if caught:
+        # 變本加厲：在自家被當場撞見正在交配（夫妻、再犯）
+        L.append(f"- 🔥 **撞見現行**：你回到家，**當場撞見她正和 {who} 在你們家裡交媾**——"
+                 "最不堪、最直接的當下，沒有任何掩飾的餘地。")
+        if mode == "off":
+            L.append("- **場景**：只點出你撞見了這不正當的一幕，不描寫任何畫面。")
+        elif mode == "fade":
+            L.append("- **場景**：你推開門的那一刻畫面留白、點到為止（fade to black），"
+                     "重點放在你與她對上眼的死寂與崩塌。")
+        else:
+            L.append("- **場景**：可露骨描寫你撞見的正在進行式畫面與兩人的反應——她驚慌、僵住、"
+                     "或一時收不住（露骨文字由你本地模型生成，依她的個性與羞恥心演出）。")
+        L.append("- **被抓包的她**：無法狡辯，反應可能是崩潰大哭求原諒、羞憤、或冷掉的破罐破摔——"
+                 "依她的個性演出。")
     else:
-        L.append("- **過程**：可露骨地回溯/坦白她和對方做了什麼（露骨文字由你本地模型生成，"
-                 "依她的個性與羞恥心演出）。")
-    L.append(f"- **她面對你質問的態度**：{_confess_by_stage(stage)}")
+        L.append("- **你會怎麼察覺**：晚歸、手機翻面、訊息聲不敢響、陌生的稱呼脫口而出、"
+                 "身上有不熟悉的氣味或痕跡。請用這些線索鋪陳到攤牌。")
+        if mode == "off":
+            L.append("- **過程**：只交代「發生了」這個事實，不描寫任何過程。")
+        elif mode == "fade":
+            L.append("- **過程**：要回溯/坦白時，含蓄留白、點到為止（fade to black）。")
+        else:
+            L.append("- **過程**：可露骨地回溯/坦白她和對方做了什麼（露骨文字由你本地模型生成，"
+                     "依她的個性與羞恥心演出）。")
+        L.append(f"- **她面對你質問的態度**：{_confess_by_stage(stage)}")
 
     if leaving:
         L += [
