@@ -4,14 +4,25 @@
 #   預設用 symlink；--copy 則改成複製。
 set -euo pipefail
 
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 解析腳本所在的「實體」路徑（pwd -P 會穿透 symlink），避免從 symlink 目錄執行時
+# 把 SRC 算成 symlink 本身，導致 ln -s 自己→自己 的無限迴圈（ELOOP）。
+SRC="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 SKILLS_DIR="$HERMES_HOME/skills"
 DEST="$SKILLS_DIR/companion-soul"
 
 mkdir -p "$SKILLS_DIR"
 
-if [[ "${1:-}" == "--copy" ]]; then
+# 防呆：若 DEST 已是壞掉/自我參照的 symlink，先清掉（rm 對 symlink 只刪連結本身）
+if [[ -L "$DEST" ]]; then
+  rm -f "$DEST"
+fi
+
+# 防呆：SRC 與 DEST 指向同一個實體 → 不要建立自我連結
+DEST_REAL="$(cd -P "$DEST" >/dev/null 2>&1 && pwd -P || true)"
+if [[ -n "$DEST_REAL" && "$DEST_REAL" == "$SRC" ]]; then
+  echo "略過連結：$DEST 已指向來源 $SRC（無需重建）。"
+elif [[ "${1:-}" == "--copy" ]]; then
   rm -rf "$DEST"
   cp -r "$SRC" "$DEST"
   echo "已複製 skill 到 $DEST"
