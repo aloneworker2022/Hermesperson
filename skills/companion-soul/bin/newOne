@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# newOne — 一鍵換一個全新的人（分手目前對象後重新生成）。
+# 用法：newOne [女|男]        例：newOne / newOne 女
+# 預設遵守「不能劈腿」：若還在關係中會先自動 breakup 再生成。
+set -euo pipefail
+
+# 找到同層的 companion 包裝（穿透 symlink）
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+COMPANION="$BIN_DIR/companion"
+
+GENDER_ARG=()
+if [[ "${1:-}" == "女" || "${1:-}" == "男" ]]; then
+  GENDER_ARG=(--gender "$1")
+fi
+
+# 若目前還有進行中的對象，先好聚好散，避免被「防劈腿」擋下。
+if "$COMPANION" status >/dev/null 2>&1; then
+  if "$COMPANION" status 2>/dev/null | grep -q "階段"; then
+    "$COMPANION" breakup >/dev/null 2>&1 || true
+  fi
+fi
+
+"$COMPANION" newpersona "${GENDER_ARG[@]}"

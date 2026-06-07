@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# companion — 在任何目錄都能呼叫 companion-soul 引擎的薄包裝。
+# 用法：companion <command> [args...]    例：companion status / companion newpersona
+# 不論被 symlink 到 ~/.local/bin 還是別處，都會自己找到 scripts/relationship.py。
+set -euo pipefail
+
+# 解析真實路徑（穿透 symlink）
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+SCRIPTS_DIR="$(cd "$BIN_DIR/../scripts" >/dev/null 2>&1 && pwd)"
+
+exec python3 "$SCRIPTS_DIR/relationship.py" "$@"

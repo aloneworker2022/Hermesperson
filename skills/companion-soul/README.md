@@ -27,6 +27,19 @@ bash install.sh          # 連結到 ~/.hermes/skills/（或 --copy 改成複製
 
 之後在 Hermes 裡正常對話即可（skill 會依 description 自動觸發），或直接呼叫 `companion-soul`。
 
+安裝時也會把兩個短指令連到 `~/.local/bin`，**任何目錄**都能直接用：
+
+```bash
+newOne            # 換一個全新的人（自動先 breakup 再生成）
+newOne 女         # 指定性別
+companion status  # 看狀態
+companion <cmd>   # 等同 python3 scripts/relationship.py <cmd>
+```
+
+> 若打 `newOne` 找不到指令，代表 `~/.local/bin` 不在 PATH。把這行加進 shell 設定再重開終端機：
+> `export PATH="$HOME/.local/bin:$PATH"`（安裝腳本也會提示）。
+> 想裝到別的目錄：`COMPANION_BINDIR=/usr/local/bin bash install.sh`。
+
 ## 快速開始
 
 ```bash
