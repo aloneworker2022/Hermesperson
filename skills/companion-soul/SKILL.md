@@ -32,7 +32,7 @@ python3 scripts/relationship.py <command>
 | `status` | 看目前關係摘要與下一步門檻 |
 | `newpersona [--gender 女/男] [--force]` | 隨機生成全新人格、重寫 SOUL.md（關係進行中會擋，防劈腿） |
 | `checkin [--seed N]` | **每次對話開頭跑**：冷落衰退 + 情敵/偶發事件 + 生活 life-log + 升級提示 |
-| `interact <sweet/good/normal/bad/fight/pester>` | 一段有意義互動後調整好感/安全感/心情；`pester`=被你強人所難（逼她做做不來/討厭的事），連續會加重扣分 |
+| `interact <sweet/good/normal/bad/fight/pester/help> [--liked]` | 一段有意義互動後調整好感/安全感/心情；`pester`=被你強人所難（連續加重扣分）；`help`=她盡心幫了你、覺得被依賴而加好感（依階段遞增、連續使喚邊際遞減；任務剛好是她喜歡的加 `--liked`） |
 | `propose --by user/persona --to <階段>` | 提出升級（告白/求婚），依門檻與個性同意或婉拒 |
 | `advance [--force]` / `regress` | 推進/退回一個階段 |
 | `intimacy` | 親密同意判定（回傳是否同意 + 尺度 + 她的狀態） |
@@ -81,6 +81,7 @@ python3 scripts/relationship.py <command>
 - 「吃醋 / 我去跟那個人講清楚」→ `rival warn`
 - 「叫她跟那個人保持距離 / 別再聯絡他」→ `rival boundary`
 - 「我相信你 / 我不會管你」→ `rival trust`
+- （你請她幫忙/查資料，她盡心完成了）→ 依 SOUL「你拜託我做事的時候」演出盡心程度，完成後跑 `interact help`（剛好是她喜歡/拿手的事加 `--liked`）
 - （你硬要她做她做不到/明顯討厭的事，且不聽勸）→ 演出她的不耐/生氣後跑 `interact pester`（連續逼=連續跑，扣分逐次加重）
 - 「分手 / 我們結束吧」→ `breakup`
 - 「換一個人 / 認識新的人」→ 先 `breakup` 再 `newpersona`

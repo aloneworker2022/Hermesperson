@@ -51,6 +51,7 @@ INTERACT_DELTA = {  # quality -> (好感, 安全感, mood或None)
     "bad": (-5, -6, None),
     "fight": (-8, -10, "生氣"),
     "pester": (-10, -4, "生氣"),  # 強人所難：逼她做不來/討厭的事；連續會加重（見 cmd_interact）
+    "help": (2, 1, None),         # 她盡心幫了你的忙；好感依階段、邊際遞減（見 cmd_interact）
 }
 
 _NOW = None  # 由 --now 覆寫的「現在」
@@ -181,7 +182,7 @@ def new_state(persona):
         "counters": {
             "interaction_count": 0, "days_since_stage": 0,
             "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
-            "overask_streak": 0,
+            "overask_streak": 0, "help_streak": 0,
         },
         "milestones": [], "pending_events": [],
         "flags": {"affair": False, "engaged": False, "married": False,
@@ -437,6 +438,7 @@ def cmd_checkin(args, cfg):
     state["counters"]["days_since_stage"] = days_between(
         state["counters"].get("stage_entered_at", state["counters"]["started_at"]))
 
+    state["counters"]["help_streak"] = 0  # 每次新對話開頭，幫忙的邊際遞減重置
     _apply_decay(state, cfg, briefing)
     if not state["flags"].get("affair"):
         _advance_rival(state, cfg, briefing)
@@ -468,6 +470,7 @@ def cmd_interact(args, cfg):
     if q == "pester":
         streak = ctr.get("overask_streak", 0) + 1
         ctr["overask_streak"] = streak
+        ctr["help_streak"] = 0
         da -= 5 * (streak - 1)          # 1次-10、2次-15、3次-20…
         ds -= 2 * (streak - 1)
         if streak >= 3:
@@ -475,8 +478,30 @@ def cmd_interact(args, cfg):
                     "好感正在崩，再下去恐影響關係穩定。哄她請改用 `interact sweet`。）")
         else:
             note = f"\n（強人所難第 {streak} 次：她不爽了，再逼下去掉更兇。）"
+    elif q == "help":
+        # 她盡心幫了你的忙：被依賴的甜→好感升；越深的關係越開心，但一直使喚會邊際遞減
+        idx = stage_index(rel["stage"])
+        base = {0: 1, 1: 1, 2: 2, 3: 3, 4: 3, 5: 4}.get(min(idx, 5), 2)
+        hs = ctr.get("help_streak", 0)
+        da = max(0, base - hs)          # 同一輪連續使喚：邊際遞減
+        ds = 1 if idx >= 3 else 0       # 戀人以上，被依賴也累積安全感
+        liked = getattr(args, "liked", False)
+        if liked and da > 0:
+            da += 2                     # 剛好是她喜歡/拿手的事 → 做得更起勁
+        ctr["help_streak"] = hs + 1
+        ctr["overask_streak"] = 0
+        if idx >= 4 and da > 0:
+            mood = "開心"
+        if da == 0:
+            note = "\n（你最近一直使喚她，這次幫忙她已經無感了——換個方式對她好一點吧。）"
+        else:
+            extra = "（剛好是她拿手/喜歡的，她做得特別起勁）" if liked else ""
+            note = f"\n（她盡心幫了你，覺得被你依賴、有被需要的感覺，好感 +{da}{extra}。）"
     elif q in ("sweet", "good"):
         ctr["overask_streak"] = 0       # 哄好了就重置連擊
+        ctr["help_streak"] = 0
+    else:
+        ctr["help_streak"] = 0
     rel["affinity"] = clamp(rel["affinity"] + da)
     rel["trust_security"] = clamp(rel["trust_security"] + ds)
     if mood:
@@ -875,6 +900,8 @@ def build_parser():
 
     sp = sub.add_parser("interact")
     sp.add_argument("quality", choices=list(INTERACT_DELTA))
+    sp.add_argument("--liked", action="store_true",
+                    help="(配合 help) 這次任務剛好是她喜歡/拿手的，好感加碼")
 
     sub.add_parser("advance").add_argument("--force", action="store_true")
     sub.add_parser("regress")
