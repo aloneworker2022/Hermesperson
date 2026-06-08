@@ -50,6 +50,7 @@ INTERACT_DELTA = {  # quality -> (好感, 安全感, mood或None)
     "normal": (2, 1, None),
     "bad": (-5, -6, None),
     "fight": (-8, -10, "生氣"),
+    "pester": (-10, -4, "生氣"),  # 強人所難：逼她做不來/討厭的事；連續會加重（見 cmd_interact）
 }
 
 _NOW = None  # 由 --now 覆寫的「現在」
@@ -180,6 +181,7 @@ def new_state(persona):
         "counters": {
             "interaction_count": 0, "days_since_stage": 0,
             "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
+            "overask_streak": 0,
         },
         "milestones": [], "pending_events": [],
         "flags": {"affair": False, "engaged": False, "married": False,
@@ -460,6 +462,21 @@ def cmd_interact(args, cfg):
         return f"quality 需為 {list(INTERACT_DELTA)} 之一。"
     da, ds, mood = INTERACT_DELTA[q]
     rel = state["relationship"]
+    ctr = state["counters"]
+    note = ""
+    # 強人所難：連續逼她做不來/討厭的事，好感急遽下滑（每多一次加重）
+    if q == "pester":
+        streak = ctr.get("overask_streak", 0) + 1
+        ctr["overask_streak"] = streak
+        da -= 5 * (streak - 1)          # 1次-10、2次-15、3次-20…
+        ds -= 2 * (streak - 1)
+        if streak >= 3:
+            note = (f"\n（你已經連續第 {streak} 次硬逼她——她真的火了，"
+                    "好感正在崩，再下去恐影響關係穩定。哄她請改用 `interact sweet`。）")
+        else:
+            note = f"\n（強人所難第 {streak} 次：她不爽了，再逼下去掉更兇。）"
+    elif q in ("sweet", "good"):
+        ctr["overask_streak"] = 0       # 哄好了就重置連擊
     rel["affinity"] = clamp(rel["affinity"] + da)
     rel["trust_security"] = clamp(rel["trust_security"] + ds)
     if mood:
@@ -469,7 +486,6 @@ def cmd_interact(args, cfg):
     state["counters"]["interaction_count"] += 1
     state["counters"]["last_interaction_at"] = now_dt().strftime("%Y-%m-%dT%H:%M:%S")
     # 原諒出軌：sweet 互動可逐步修復並清旗標（離開結局門檻更高）
-    note = ""
     if state["flags"].get("affair") and q == "sweet":
         loyalty = state["persona"].get("loyalty", 60)
         if state["flags"].get("leaving"):

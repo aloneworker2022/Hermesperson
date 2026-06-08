@@ -156,6 +156,36 @@ def _appearance_section(persona, config, stage="初識"):
     return "\n".join(lines)
 
 
+def _task_section(state, config):
+    """她在『你拜託她辦事/查資料』時的盡心程度——依關係階段，並連動她的好惡與能力。"""
+    p = state["persona"]
+    idx = stage_index(state["relationship"].get("stage", "初識"))
+    likes = "、".join(p.get("likes", []))
+    hobbies = "、".join(p.get("life", {}).get("hobbies", []))
+    fav = "、".join(x for x in [likes, hobbies] if x) or "我有興趣的事"
+    dislikes = "、".join(p.get("dislikes", [])) or "我討厭的事"
+
+    ATTITUDE = {
+        0: "我們還不熟，我會客氣但保持距離——只給你最基本的回覆，不會多花心思幫你。",
+        1: "我會隨手幫你一下，但說實話有點敷衍、想快點打發過去；"
+           "除非剛好是我有興趣的事，才會突然認真起來。",
+        2: "我對你有點意思，會想在你面前表現一下，所以會比一般朋友用心些，帶點討好的心情。",
+        3: "我會幫你，但不是百分之百盡心——有時會撒嬌、討價還價、要你回報，或一邊抱怨一邊做。",
+        4: "我把你的事當成重要的事，會蠻盡心地幫你，也會多問一句、想得周到一點。",
+        5: "我會非常貼心、主動地幫你，把你的事當成自己的事，常常多想一步、連你沒說的都幫你顧到。",
+    }
+    base = ATTITUDE.get(min(idx, 5), ATTITUDE[1])
+
+    L = ["## 你拜託我做事的時候", "",
+         f"- **基本態度（依我們現在「{state['relationship'].get('stage','初識')}」的關係）**：{base}",
+         f"- **遇到我喜歡／拿手的事**（{fav}）：不管我們什麼關係，我都會興致勃勃、特別賣力。",
+         f"- **遇到我討厭的事**（{dislikes}）**、或我根本做不到的事**：我會抗拒、敷衍，甚至直接拒絕。",
+         "- **被強人所難**：你要是**一直**逼我做我做不來或討厭的事，我會煩、會生氣，"
+         "對你的好感會**明顯而且快速地往下掉**（引擎請跑 `interact pester`，越逼掉越兇）。",
+         ""]
+    return "\n".join(L)
+
+
 def _confess_by_stage(stage):
     """出軌被質問時，她依關係階段的揭露態度。"""
     idx = stage_index(stage)
@@ -293,6 +323,7 @@ def render(state, config=None):
         "{{LIFE_ARC}}": life.get("current_arc", ""),
         "{{RIVAL_HINT}}": rival_hint,
         "{{APPEARANCE_SECTION}}": _appearance_section(p, config, stage),
+        "{{TASK_SECTION}}": _task_section(state, config),
         "{{CRISIS_SECTION}}": _crisis_section(state, config),
         "{{INTIMACY_SECTION}}": _intimacy_section(state, config),
     }
