@@ -40,8 +40,8 @@ bash install.sh          # 連結到 ~/.hermes/skills/（或 --copy 改成複製
 安裝時也會把兩個短指令連到 `~/.local/bin`，**任何目錄**都能直接用：
 
 ```bash
-newOne            # 換一個全新的人（自動先 breakup 再生成）
-newOne 女         # 指定性別
+newOne            # 換一個全新的人（自動先 breakup 再生成；預設女）
+newOne 男         # 指定性別（不指定預設女）
 us                # 看狀態
 bye [理由]        # 跟目前對象分手
 companion <cmd>   # 等同 python3 scripts/relationship.py <cmd>
@@ -71,7 +71,7 @@ python3 relationship.py restore           # 還原最初的 SOUL.md
 
 | key | 值 | 說明 |
 |---|---|---|
-| `gender_pref` | 女 / 男 / random | 新對象性別偏好（預設 random） |
+| `gender_pref` | 女 / 男 / random | 新對象性別偏好（**預設女**；要男生或隨機才需改） |
 | `intimacy_mode` | explicit / fade / off | 親密尺度（預設 explicit 露骨） |
 | `intimacy_min_stage` | 戀人 / 曖昧 | 親密最低解鎖階段 |
 | `allow_archetypes` | 例 `病嬌` | 加入可選原型（逗號分隔） |

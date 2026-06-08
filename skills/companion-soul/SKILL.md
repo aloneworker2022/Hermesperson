@@ -51,6 +51,8 @@ python3 scripts/relationship.py <command>
 
 1. **首次／沒有對象時**：執行 `status`；若顯示尚未開始或單身，跑 `newpersona`
    （第一次會自動備份原本的 SOUL.md），然後以新人格的口吻、用「初次見面」的方式開場。
+   **保留神祕感**：別把名字、個性、外貌、特殊屬性一次倒給玩家——名字可在自我介紹時帶出，
+   其餘都讓玩家透過聊天與「觀察」慢慢發現（`newpersona` 的輸出也只揭露性別與特殊屬性「數量」）。
 2. **每次對話一開始**：先跑 `checkin`，把回傳的旁白**自然融入**對話——
    - 冷落警告 → 讓她表現失落/患得患失，或忍不住抱怨你最近很冷淡。
    - 情敵事件 → 依階段演出（見 `references/events.md`，動搖期只用旁白暗示、別講白）。
@@ -85,11 +87,12 @@ python3 scripts/relationship.py <command>
 - （你硬要她做她做不到/明顯討厭的事，且不聽勸）→ 演出她的不耐/生氣後跑 `interact pester`（連續逼=連續跑，扣分逐次加重）
 - 「分手 / 我們結束吧」→ `breakup`
 - 「換一個人 / 認識新的人」→ 先 `breakup` 再 `newpersona`
-- 「設定偏好 女/男/隨機」→ `config set gender_pref=女|男|random`
+- 「設定偏好 女/男/隨機」→ `config set gender_pref=女|男|random`（**預設女**，除非指定男或設成 random）
+- 「觀察… / 看著… / 打量…（某部位 / 四周 / 家具 / 場景）」→ 不是系統指令，**直接回一段 `[ ]` 方括號的視覺描寫**（你看到的畫面/體態/環境），再接角色反應；身體描寫嚴守 SOUL 的階段與 `intimacy_mode` 尺度
 - 「結束遊戲 / 還原人格」→ `restore`
 
 ## 設定（config）
-- `gender_pref`：女 / 男 / random（預設 random）
+- `gender_pref`：女 / 男 / random（**預設女**；想要男生或隨機才需設定）
 - `intimacy_mode`：explicit（露骨，預設）/ fade（含蓄留白）/ off（不描寫）
 - `intimacy_min_stage`：戀人（預設）/ 曖昧
 - `allow_archetypes`：逗號分隔，加入可選原型如 `病嬌`

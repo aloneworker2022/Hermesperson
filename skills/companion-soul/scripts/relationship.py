@@ -85,7 +85,7 @@ def clamp(v, lo=0, hi=100):
 
 # ── 載入/儲存 ────────────────────────────────────────────────
 DEFAULT_CONFIG = {
-    "gender_pref": "random",      # 女/男/random
+    "gender_pref": "女",          # 女/男/random（預設女；除非指定男或設成 random）
     "intimacy_mode": "explicit",  # explicit/fade/off
     "intimacy_min_stage": "戀人",  # 可改 曖昧
     "allow_archetypes": [],        # 例 ["病嬌"]
@@ -206,20 +206,13 @@ def cmd_newpersona(args, cfg):
     save_state(state)
     write_soul(state, cfg)
     p = persona
-    marks = persona_gen.RARITY_MARK
-    traits = p.get("special_traits") or []
-    trait_str = "、".join(f"{marks.get(t['rarity'],'')}[{t['rarity']}]{t['name']}" for t in traits)
-    top = max((t["rarity"] for t in traits), key=persona_gen.RARITY_ORDER.index) if traits else None
-    head = "✦ 你遇見了一個新的人。"
-    if top in ("史詩", "傳說"):
-        head = f"{marks.get(top)}★ 稀有相遇！抽到了「{top}」級特殊屬性！ {marks.get(top)}\n" + head
-    return (head + "\n"
-            f"  名字：{p['name']}（{p['gender']}，{p['age']}）\n"
-            f"  個性：{p['archetype']} — {p['contrast']}\n"
-            f"  職業：{p['occupation']}　主動度：{p['proactivity']}/100\n"
-            f"  喜歡：{'、'.join(p['likes'])}\n"
-            f"  ✨特殊屬性：{trait_str or '無'}\n"
-            f"  SOUL.md 已改寫。請以「初次見面」的口吻、用 {p['name']} 的身分開場。")
+    n_traits = len(p.get("special_traits") or [])
+    # 刻意保留神祕感：只揭露性別與「有幾個特殊」，名字/個性/外貌/特殊內容都靠相處與「觀察」慢慢發現。
+    return ("✦ 你遇見了一個新的人。\n"
+            f"  性別：{p['gender']}\n"
+            f"  特殊：{n_traits} 個（內容先保密，靠相處和「觀察」自己發現）\n"
+            "  SOUL.md 已改寫。請以「初次見面」的口吻開場，但**不要主動報出名字、個性、"
+            "外貌或特殊屬性**——這些要讓玩家透過聊天與「觀察」慢慢挖掘，不要一次講白。")
 
 
 def cmd_restore(args, cfg):
