@@ -89,7 +89,7 @@ skills/companion-soul/
 {
   "active": true,
   "persona": { /* persona_gen.generate_persona() 的整包輸出 */
-    "name": "...", "gender": "女", "age": 24, "archetype": "傲嬌",
+    "name": "...", "gender": "女|男|雙性", "age": 24, "archetype": "傲嬌",
     "proactivity": "主動|被動", "shyness": 0-100, "jealousy": 0-100,
     "loyalty": 0-100,                    // ★ 出軌判定的關鍵之一（低=易淪陷）
     "tone": "...", "catchphrases": [...], "reactions": {...},
@@ -111,6 +111,7 @@ skills/companion-soul/
     "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso
   },
   "milestones": [ {type, note, at}, ... ],
+  "memories": [ {note, at}, ... ],   // remember 指令累積，render 取最近 14 則進 SOUL（跨對話記憶）
   "pending_events": [ /* 進行中的事件，情敵鏈是 {"chain":"rival", ...} */ ],
   "flags": {
     "affair": false,        // 出軌旗標亮起（待原諒或分手）

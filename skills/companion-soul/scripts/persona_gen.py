@@ -317,31 +317,55 @@ SPECIAL_TRAITS = {
 }
 RARITY_ORDER = ["普通", "稀有", "史詩", "傳說"]
 
+# 雙性人特殊屬性池：沿用女性身體特徵 + 雙性專屬器官（cat「屌」為定義性私密特徵，必中其一）
+SPECIAL_TRAITS["雙性"] = SPECIAL_TRAITS["女"] + [
+    ("雙性巨屌", "史詩", "屌"),
+    ("又粗又長、隨興奮抬頭的雙性巨根", "傳說", "屌"),
+    ("雙性巨乳", "史詩", "胸"),
+    ("能勃起也能濕潤、兩用的雙性器官", "傳說", "私"),
+    ("能射精的雙性體質", "史詩", "私"),
+    ("沉甸甸、隨步伐晃動的雙性囊袋", "稀有", "囊"),
+]
+
 
 def roll_special_traits(gender, luck=0):
     """抽 1~3 個特殊屬性（依稀有度加權、同類不重複）。
-    luck>0 會提高高稀有度權重（0~100）。回傳 [{name,rarity,cat}]。"""
+    luck>0 會提高高稀有度權重（0~100）。回傳 [{name,rarity,cat}]。
+    雙性人必帶一個「屌」類定義性特徵。"""
     pool = SPECIAL_TRAITS.get(gender, SPECIAL_TRAITS["女"])
     boost = max(0, min(100, luck)) / 100.0
     # 抽幾個：基本 1 個，50% 再一個，20% 再一個
     count = 1 + (1 if random.random() < 0.5 + boost * 0.3 else 0) \
               + (1 if random.random() < 0.2 + boost * 0.3 else 0)
-    chosen, used_cats = [], set()
     candidates = list(pool)
-    for _ in range(count):
+    chosen, used_cats = [], set()
+
+    def _pick():
         avail = [t for t in candidates if t[2] not in used_cats]
         if not avail:
-            break
+            return False
         weights = []
         for _n, rarity, _c in avail:
             w = RARITY_WEIGHT[rarity]
-            # luck 把權重往高稀有度傾斜
-            tier = RARITY_ORDER.index(rarity)
-            w = w * (1 + boost * tier)
-            weights.append(w)
+            tier = RARITY_ORDER.index(rarity)   # luck 把權重往高稀有度傾斜
+            weights.append(w * (1 + boost * tier))
         name, rarity, cat = random.choices(avail, weights=weights, k=1)[0]
         chosen.append({"name": name, "rarity": rarity, "cat": cat})
         used_cats.add(cat)
+        return True
+
+    # 雙性人：先保證帶到一個「屌」類特徵，並至少 2 個特殊屬性
+    if gender == "雙性":
+        futa = [t for t in pool if t[2] == "屌"]
+        if futa:
+            name, rarity, cat = random.choice(futa)
+            chosen.append({"name": name, "rarity": rarity, "cat": cat})
+            used_cats.add(cat)
+        count = max(2, count)
+
+    while len(chosen) < count:
+        if not _pick():
+            break
     # 依稀有度排序（高在前）
     chosen.sort(key=lambda t: -RARITY_ORDER.index(t["rarity"]))
     return chosen
@@ -356,22 +380,26 @@ def generate_appearance(gender):
     if gender == "女":
         height = random.randint(150, 172)
         figure = {"build": random.choice(BUILD["女"]), "bust": random.choice(BUST)}
-    else:
+    elif gender == "男":
         height = random.randint(168, 188)
         figure = {"build": random.choice(BUILD["男"]), "physique": random.choice(MALE_PHYSIQUE)}
+    else:  # 雙性：女性化的胴體，另兼具男性性器（細節由 special_traits 與外貌段呈現）
+        height = random.randint(155, 178)
+        figure = {"build": random.choice(BUILD["女"]), "bust": random.choice(BUST),
+                  "futanari": True}
     return {
         "height_cm": height,
         **figure,
-        "hair": random.choice(HAIR[gender]),
+        "hair": random.choice(HAIR.get(gender, HAIR["女"])),
         "eyes": random.choice(EYES),
-        "style": random.choice(STYLE[gender]),
+        "style": random.choice(STYLE.get(gender, STYLE["女"])),
         "feature": random.choice(FEATURE),
     }
 
 
 def generate_persona(gender=None, allow_optional=None, luck=0):
-    """產生一份人格 dict。gender: '女'/'男'/None(隨機)。luck: 特殊屬性幸運值 0~100。"""
-    if gender not in ("女", "男"):
+    """產生一份人格 dict。gender: '女'/'男'/'雙性'/None(隨機只給女或男)。luck: 特殊屬性幸運值 0~100。"""
+    if gender not in ("女", "男", "雙性"):
         gender = random.choice(["女", "男"])
     allow_optional = set(allow_optional or [])
     pool = [k for k in ARCHETYPES if k not in DEFAULT_OPTIONAL or k in allow_optional]
@@ -385,7 +413,7 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
     occupation = random.choice(OCCUPATIONS)
 
     persona = {
-        "name": random.choice(NAMES[gender]),
+        "name": random.choice(NAMES.get(gender, NAMES["女"])),
         "gender": gender,
         "age": random.randint(20, 32),
         "archetype": archetype,

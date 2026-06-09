@@ -184,7 +184,7 @@ def new_state(persona):
             "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
             "overask_streak": 0, "help_streak": 0,
         },
-        "milestones": [], "pending_events": [],
+        "milestones": [], "memories": [], "pending_events": [],
         "flags": {"affair": False, "engaged": False, "married": False,
                   "leaving": False, "caught_in_act": False},
     }
@@ -230,6 +230,29 @@ def cmd_rerender(args, cfg):
         return "目前沒有進行中的對象，沒有可重繪的 SOUL.md。"
     write_soul(state, cfg)
     return f"已用最新模板重繪 {state['persona']['name']} 的 SOUL.md（關係狀態不變）。"
+
+
+MAX_MEMORIES = 60  # state 內最多保留幾則記憶（render 只取最近 N 則，見 render_soul）
+
+
+def cmd_remember(args, cfg):
+    """記住一件聊天中的重要事（玩家偏好/約定/聊過的事/綽號…）。會寫進 state 並重繪進 SOUL.md，
+    讓她下次（甚至下個 session）還記得。由扮演的引擎在對話中主動呼叫。"""
+    state = load_state()
+    if not state or not state.get("active"):
+        return "目前沒有進行中的對象。"
+    note = (args.note or "").strip()
+    if not note:
+        return "用法：remember <要記住的事>"
+    iso = now_dt().strftime("%Y-%m-%dT%H:%M:%S")
+    mems = state.setdefault("memories", [])
+    mems.append({"note": note, "at": iso})
+    if len(mems) > MAX_MEMORIES:
+        del mems[:-MAX_MEMORIES]
+    append_memory(f"【記事】{note}")
+    save_state(state)
+    write_soul(state, cfg)
+    return f"（記住了：{note}）目前共記得 {len(mems)} 件事，已寫進 SOUL.md。"
 
 
 # ── checkin：衰退 + 事件 + life-log ──────────────────────────
@@ -885,7 +908,7 @@ def build_parser():
     sub.add_parser("breakup").add_argument("--reason", default=None)
 
     sp = sub.add_parser("newpersona")
-    sp.add_argument("--gender", choices=["女", "男"], default=None)
+    sp.add_argument("--gender", choices=["女", "男", "雙性"], default=None)
     sp.add_argument("--force", action="store_true")
 
     sp = sub.add_parser("checkin")
@@ -898,6 +921,9 @@ def build_parser():
 
     sub.add_parser("advance").add_argument("--force", action="store_true")
     sub.add_parser("regress")
+
+    sp = sub.add_parser("remember")
+    sp.add_argument("note", help="要記住的事（玩家偏好/約定/聊過的事/綽號…）")
 
     sp = sub.add_parser("propose")
     sp.add_argument("--by", choices=["user", "persona"], default="user")
@@ -923,7 +949,7 @@ DISPATCH = {
     "rerender": cmd_rerender,
     "checkin": cmd_checkin, "interact": cmd_interact, "advance": cmd_advance,
     "regress": cmd_regress, "propose": cmd_propose, "intimacy": cmd_intimacy,
-    "rival": cmd_rival,
+    "rival": cmd_rival, "remember": cmd_remember,
     "breakup": cmd_breakup, "cron-msg": cmd_cronmsg, "config": cmd_config,
 }
 

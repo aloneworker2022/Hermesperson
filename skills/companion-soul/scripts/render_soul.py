@@ -91,7 +91,7 @@ def _intimacy_section(state, config):
 
 
 # 私密部位類別：只在「親密場景」且戀人以上才描寫；平時最多用穿著/反應暗示
-PRIVATE_CATS = {"乳暈", "乳尖", "胸感", "敏", "私"}
+PRIVATE_CATS = {"乳暈", "乳尖", "胸感", "敏", "私", "屌", "囊"}
 
 
 def _appearance_section(persona, config, stage="初識"):
@@ -111,6 +111,13 @@ def _appearance_section(persona, config, stage="初識"):
             lines.append(f"- 身材：{ap['bust']}")
         elif ap.get("physique"):
             lines.append(f"- 身材：{ap['physique']}")
+    if ap.get("futanari"):
+        if mode == "off":
+            lines.append("- 性別：雙性人（生理細節不描寫）")
+        else:
+            lines.append("- 身體特殊：我是**雙性人**——有一副女性化的胴體與胸部，胯下卻同時"
+                         "長著完整、雄壯的男性性器。這是**私密**特徵，依關係階段與尺度呈現"
+                         "（低階段衣著下只是隱約的形狀，要到親密場景才完全顯露）。")
     if ap.get("hair"):
         lines.append(f"- 髮型：{ap['hair']}")
     if ap.get("eyes"):
@@ -135,8 +142,12 @@ def _appearance_section(persona, config, stage="初識"):
     # ── 呈現規則（依關係階段與個性決定揭露尺度）──
     idx = stage_index(stage)
     lines += ["", "### 這些外貌怎麼呈現（重要）", ""]
-    lines.append("- 別像報菜名一次全講；讓特質**融入動作與情緒**——撥髮、被稱讚會臉紅、"
+    lines.append("- 平常聊天別像報菜名一次全講；讓特質**融入動作與情緒**——撥髮、被稱讚會臉紅、"
                  "緊張摸耳垂、走近時聞到體香——比直接描述更自然。")
+    if mode != "off":
+        lines.append("- **但被『觀察』或進入親密時要反過來——**在當前階段與尺度允許的範圍內，"
+                     "請**具體、突出、有畫面感地**刻畫身材與身體特徵（曲線、份量、質感、膚色、"
+                     "隨動作的晃動與起伏…），給足細節、別含糊兩三句帶過。身體描寫是這個玩法的重點之一。")
     lines.append("- 揭露大方或害羞，要**符合我的個性與當下心情**（傲嬌嘴硬、高冷克制、"
                  "活潑大方、文靜害羞）。")
     if idx <= 1:  # 初識 / 朋友
@@ -154,6 +165,28 @@ def _appearance_section(persona, config, stage="初識"):
         lines.append("- ⚠️ 我身上標「（私密）」的特質目前是**隱藏設定**，要到戀人階段的親密場景才會顯現，"
                      "現在請當作還沒被你發現。")
     return "\n".join(lines)
+
+
+def _memory_section(state, config):
+    """把『我們之間發生過/我記住的事』算繪進 SOUL，讓她跨對話仍記得（最近 N 則）。"""
+    items = []
+    for m in state.get("memories", []):
+        items.append((m.get("at", ""), m.get("note", "")))
+    for ms in state.get("milestones", []):
+        if ms.get("note"):
+            items.append((ms.get("at", ""), ms["note"]))
+    if not items:
+        return ("## 我記得的事（我們之間）\n\n"
+                "我們才剛開始，還沒有共同回憶——之後相處的點滴我都會記住。")
+    items.sort(key=lambda x: x[0])
+    recent = items[-14:]
+    L = ["## 我記得的事（我們之間）", "",
+         "下面是我們相處到現在、我記在心上的事。聊天時要**自然帶出、前後一致**，"
+         "別忘記、也別自相矛盾（這就是我對你的記憶）：", ""]
+    for at, note in recent:
+        date = at[:10] if at else ""
+        L.append(f"- {date}　{note}" if date else f"- {note}")
+    return "\n".join(L)
 
 
 def _task_section(state, config):
@@ -326,6 +359,7 @@ def render(state, config=None):
         "{{LIFE_ARC}}": life.get("current_arc", ""),
         "{{RIVAL_HINT}}": rival_hint,
         "{{APPEARANCE_SECTION}}": _appearance_section(p, config, stage),
+        "{{MEMORY_SECTION}}": _memory_section(state, config),
         "{{TASK_SECTION}}": _task_section(state, config),
         "{{CRISIS_SECTION}}": _crisis_section(state, config),
         "{{INTIMACY_SECTION}}": _intimacy_section(state, config),
