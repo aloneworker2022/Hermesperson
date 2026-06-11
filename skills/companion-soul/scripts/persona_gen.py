@@ -112,16 +112,53 @@ NAMES = {
     "男": ["承翰", "宇辰", "子軒", "和也", "悠斗", "霖", "睿", "嘉樹", "翔太", "彥廷",
             "宥辰", "蒼", "凱", "森", "晨曦", "湛", "亮", "景行", "理人", "陽"],
 }
-OCCUPATIONS = ["咖啡店店員", "插畫家", "護理師", "高中老師", "軟體工程師", "花店老闆",
-               "樂團鍵盤手", "書店員", "甜點師", "獸醫", "平面設計師", "研究生",
-               "健身教練", "聲優", "圖書館員", "調酒師"]
+# ── 統一稀有度評級系統（職業/身材/罩杯/眼睛/性慾共用）──────────
+GRADE_ORDER = ["N", "R", "S", "SR", "SSR"]
+GRADE_WEIGHT = {"N": 100, "R": 60, "S": 16, "SR": 6, "SSR": 2}
+
+
+def _roll_graded(pool, luck=0):
+    """pool: [(value, grade), ...]；依 grade 權重抽一個，luck(0~100) 把機率往高階傾斜。回傳 (value, grade)。"""
+    boost = max(0, min(100, luck)) / 100.0
+    weights = []
+    for _v, g in pool:
+        tier = GRADE_ORDER.index(g) if g in GRADE_ORDER else 0
+        weights.append(GRADE_WEIGHT.get(g, 30) * (1 + boost * tier * 1.5))
+    return random.choices(pool, weights=weights, k=1)[0]
+
+
+# 職業（含稀有度；一般職業 R，情色向越露骨越稀有）
+OCCUPATIONS = [
+    ("咖啡店店員", "R"), ("插畫家", "R"), ("護理師", "R"), ("高中老師", "R"),
+    ("軟體工程師", "R"), ("花店老闆", "R"), ("樂團鍵盤手", "R"), ("書店員", "R"),
+    ("甜點師", "R"), ("獸醫", "R"), ("平面設計師", "R"), ("研究生", "R"),
+    ("健身教練", "R"), ("聲優", "R"), ("圖書館員", "R"), ("調酒師", "R"),
+    ("按摩師", "S"), ("半套店小姐", "S"), ("學生", "S"),
+    ("模特兒", "SR"), ("泡泡浴小姐", "SR"),
+    ("酒店小姐", "SSR"), ("應召女", "SSR"), ("showgirl", "SSR"), ("家庭主婦", "SSR"),
+]
 LIKES = ["抹茶甜點", "看海", "貓", "下雨天", "老電影", "草莓", "爵士樂", "拍立得",
          "熱可可", "推理小說", "盆栽", "夜跑", "手沖咖啡", "煙火", "毛茸茸的東西", "星空"]
 DISLIKES = ["香菜", "被已讀不回", "突然的大聲", "苦瓜", "遲到", "黏膩的承諾跳票", "打雷",
             "被當空氣", "說謊", "蟑螂"]
 QUIRKS = ["其實很怕鬼", "睡前一定要抱抱枕", "喝醉會變得超誠實", "緊張就會摸耳朵",
           "超怕痛但嘴硬", "對甜食毫無抵抗力", "認床、換地方睡不著", "會偷偷收集你傳的訊息截圖",
-          "唱歌會跑調但很愛唱", "方向感差到會迷路", "看電影一定哭", "起床氣很重"]
+          "唱歌會跑調但很愛唱", "方向感差到會迷路", "看電影一定哭", "起床氣很重",
+          # 情色向小習慣
+          "喝醉會變得很想要", "敏感到光被吹氣就會軟", "私下喜歡穿情趣內衣",
+          "其實有點被看的癖好", "壓力一大就想找你紓解", "睡覺非得抱著你才睡得著",
+          "接吻會立刻腿軟", "洗澡時會忍不住自己摸", "脖子是她最致命的敏感帶"]
+
+# 性慾傾向（與個性原型正交的第二維度；雙性人固定為雙性好色 SSR）
+# name -> (grade, shyness_delta, desc)
+LIBIDO = {
+    "性冷感": ("N", 25, "對性事冷淡、被動，慾望低；需要很多安全感與鋪陳才願意，"
+                        "容易抗拒、興致缺缺，平常也不太主動談這些。"),
+    "好色": ("S", -25, "慾望旺盛、對性事主動又好奇；容易動情、放得開，"
+                       "常會自己撩你、主動湊近、不掩飾想要。"),
+    "雙性好色": ("SSR", -20, "身為雙性人，慾望特別旺盛、又主動又敏感；"
+                            "對性事毫不遮掩、大膽索求，常忍不住想用自己那話兒。"),
+}
 HOBBIES = ["烘焙", "養多肉", "彈吉他", "玩拍立得", "蒐集明信片", "夜騎腳踏車",
            "追劇", "畫畫", "煮宵夜", "逛二手書店", "拼拼圖", "做手帳"]
 FRIEND_NAMES = ["阿May", "小薰", "靜姊", "阿哲", "Nina", "學姊", "店長", "小不點", "阿凱", "Coco"]
@@ -203,14 +240,20 @@ ARCS = ["最近在準備一個大案子，壓力有點大", "剛搬到新租屋�
         "在學一樣新東西（線上課程）", "老家有點事要回去一趟", "最近迷上一部新劇"]
 
 # ── 外貌/身材庫 ───────────────────────────────────────────────
-BUILD = {
-    "女": ["纖細苗條", "勻稱有致", "豐滿火辣", "嬌小玲瓏", "運動健美", "肉感微肉",
-            "骨感清瘦", "凹凸有致的沙漏身材", "高挑纖長", "微肉圓潤", "結實緊緻"],
-    "男": ["精瘦修長", "勻稱結實", "高大壯碩", "健美肌肉線條", "斯文清瘦"],
-}
-BUST = ["A 罩杯、小巧清秀", "A 罩杯、平坦俐落", "B 罩杯、剛好一手掌握",
-        "B 罩杯、自然小巧", "C 罩杯、勻稱漂亮", "C 罩杯、圓潤水滴形",
-        "D 罩杯、飽滿有份量", "E 罩杯、傲人豐滿", "F 罩杯、誇張的巨乳"]
+# 女/雙性 體型（含評級）；男生維持簡單清單
+BUILD_F = [
+    ("勻稱有致", "N"), ("骨感清瘦", "N"), ("纖細苗條", "R"), ("嬌小玲瓏", "R"),
+    ("肉感微肉", "R"), ("微肉圓潤", "R"), ("結實緊緻", "S"), ("運動健美", "S"),
+    ("高挑纖長", "SR"), ("豐滿火辣", "SR"), ("凹凸有致的沙漏身材", "SSR"),
+]
+BUILD = {"男": ["精瘦修長", "勻稱結實", "高大壯碩", "健美肌肉線條", "斯文清瘦"]}
+# 罩杯（含評級：越豐滿/特別越稀有）
+BUST = [
+    ("A 罩杯、平坦俐落", "N"), ("A 罩杯、小巧清秀", "N"), ("B 罩杯、自然小巧", "N"),
+    ("B 罩杯、剛好一手掌握", "R"), ("C 罩杯、勻稱漂亮", "R"),
+    ("C 罩杯、圓潤水滴形", "S"), ("D 罩杯、飽滿有份量", "S"),
+    ("E 罩杯、傲人豐滿", "SR"), ("F 罩杯、誇張的巨乳", "SSR"),
+]
 MALE_PHYSIQUE = ["薄肌、線條乾淨", "胸肌結實、有點腹肌", "明顯六塊腹肌", "寬肩窄腰、衣架子身材"]
 HAIR = {
     "女": ["烏黑長直髮", "及肩棕色微捲", "俏麗短髮", "栗色大波浪", "高馬尾、俐落",
@@ -218,10 +261,18 @@ HAIR = {
     "男": ["清爽短髮", "微亂的中長瀏海", "俐落寸頭", "棕色燙髮、有層次",
             "黑髮側分、乾淨", "微長瀏海遮眉、慵懶感"],
 }
-EYES = ["圓圓的杏眼、很有神", "細長的丹鳳眼", "下垂眼、看起來很溫柔", "笑起來瞇成月牙",
-        "大眼睛、睫毛很長", "瞳色偏淺、像貓"]
+# 眼睛（含評級）
+EYES = [
+    ("圓圓的杏眼、很有神", "N"), ("笑起來瞇成月牙", "N"),
+    ("細長的丹鳳眼", "S"), ("下垂眼、看起來很溫柔", "S"),
+    ("大眼睛、睫毛很長", "SR"), ("上揚的狐狸眼、有點媚", "SR"),
+    ("瞳色偏淺、像貓", "SSR"), ("含情的桃花眼、天生勾人", "SSR"),
+]
 STYLE = {
-    "女": ["簡約日系", "甜美洋裝風", "街頭 oversize", "知性 OL", "清新文青", "性感俐落", "森林系"],
+    "女": ["簡約日系", "甜美洋裝風", "街頭 oversize", "知性 OL", "清新文青", "性感俐落",
+            "森林系", "古著復古", "甜辣風", "JK 制服風", "運動辣妹", "優雅名媛",
+            "暗黑哥德", "Y2K 辣妹", "清純鄰家", "小露性感", "韓系慵懶", "洛麗塔",
+            "極簡冷淡風", "健康陽光", "成熟知性套裝", "可愛甜美", "輕熟女風"],
     "男": ["簡約乾淨", "街頭休閒", "知性襯衫", "運動機能風", "文青針織", "成熟西裝感"],
 }
 FEATURE = ["左臉笑起來有個酒窩", "有顆小虎牙", "鎖骨上有一顆痣", "眼角有淚痣",
@@ -378,23 +429,24 @@ def _pick_n(pool, n):
     return random.sample(pool, min(n, len(pool)))
 
 
-def generate_appearance(gender):
-    """產生外貌/身材 dict（依性別給不同欄位）。"""
-    if gender == "女":
-        height = random.randint(150, 172)
-        figure = {"build": random.choice(BUILD["女"]), "bust": random.choice(BUST)}
-    elif gender == "男":
+def generate_appearance(gender, luck=0):
+    """產生外貌/身材 dict（依性別給不同欄位；身材/罩杯/眼睛吃稀有度與 luck）。"""
+    eyes = _roll_graded(EYES, luck)[0]
+    if gender == "男":
         height = random.randint(168, 188)
         figure = {"build": random.choice(BUILD["男"]), "physique": random.choice(MALE_PHYSIQUE)}
-    else:  # 雙性：女性化的胴體，另兼具男性性器（細節由 special_traits 與外貌段呈現）
+    elif gender == "雙性":  # 女性化的胴體，另兼具男性性器（細節由 special_traits 與外貌段呈現）
         height = random.randint(155, 178)
-        figure = {"build": random.choice(BUILD["女"]), "bust": random.choice(BUST),
+        figure = {"build": _roll_graded(BUILD_F, luck)[0], "bust": _roll_graded(BUST, luck)[0],
                   "futanari": True}
+    else:  # 女
+        height = random.randint(150, 172)
+        figure = {"build": _roll_graded(BUILD_F, luck)[0], "bust": _roll_graded(BUST, luck)[0]}
     return {
         "height_cm": height,
         **figure,
         "hair": random.choice(HAIR.get(gender, HAIR["女"])),
-        "eyes": random.choice(EYES),
+        "eyes": eyes,
         "style": random.choice(STYLE.get(gender, STYLE["女"])),
         "feature": random.choice(FEATURE),
     }
@@ -413,15 +465,25 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
     proactivity = max(5, min(98, arch["base_proactivity"] + random.randint(-12, 12)))
     loyalty = _clamp(ARCHETYPE_LOYALTY.get(archetype, 60) + random.randint(-10, 10))
     quirk = random.choice(QUIRKS)
-    occupation = random.choice(OCCUPATIONS)
+    occupation = _roll_graded(OCCUPATIONS, luck)[0]
+
+    # 性慾傾向（第二維度）：雙性人固定雙性好色；其餘 性冷感(較常見)/好色，luck 拉高好色
+    if gender == "雙性":
+        libido_name = "雙性好色"
+    else:
+        boost = max(0, min(100, luck)) / 100.0
+        libido_name = random.choices(["性冷感", "好色"], weights=[62, 38 + boost * 40], k=1)[0]
+    lib_grade, shy_delta, lib_desc = LIBIDO[libido_name]
+    shyness = _clamp(arch["shyness"] + shy_delta)  # 好色更放得開、性冷感更保守
 
     persona = {
         "name": random.choice(NAMES.get(gender, NAMES["女"])),
         "gender": gender,
         "age": random.randint(20, 32),
         "archetype": archetype,
+        "libido": {"name": libido_name, "grade": lib_grade, "desc": lib_desc},
         "proactivity": proactivity,
-        "shyness": arch["shyness"],
+        "shyness": shyness,
         "jealousy": arch["jealousy"],
         "loyalty": loyalty,
         "occupation": occupation,
@@ -431,7 +493,7 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
         "likes": _pick_n(LIKES, 3),
         "dislikes": _pick_n(DISLIKES, 2),
         "quirk": quirk,
-        "appearance": generate_appearance(gender),
+        "appearance": generate_appearance(gender, luck),
         "special_traits": roll_special_traits(gender, luck),
         "contrast": f"是{archetype}的人，但{quirk}",  # 反差小設定
         "life": {

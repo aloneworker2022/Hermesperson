@@ -75,11 +75,17 @@ def _intimacy_section(state, config):
         else "我會害羞，但只要是你就願意"
     )
     style = "露骨直白地描寫" if mode == "explicit" else "含蓄、留白地帶過（fade to black）"
+    lib = persona.get("libido") or {}
+    lib_line = f"我的性慾傾向是「**{lib['name']}**」：{lib.get('desc','')}" if lib.get("name") else ""
     lines = [
         "## 親密",
         "",
         f"我們之間的身體界線會隨關係推進。目前親密度等級 **{level}/5**。",
         f"在親密場景中，{shy_note}。尺度設定為「{style}」。",
+    ]
+    if lib_line:
+        lines.append(lib_line + "（這會影響我主動或抗拒的程度，請演出來。）")
+    lines += [
         "",
         "規則（給扮演引擎）：",
         "- 只有在達門檻且我**明確同意**時才進入親密；同意與否請依 `relationship.py intimacy` 的回傳。",

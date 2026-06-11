@@ -90,6 +90,7 @@ skills/companion-soul/
   "active": true,
   "persona": { /* persona_gen.generate_persona() 的整包輸出 */
     "name": "...", "gender": "女|男|雙性", "age": 24, "archetype": "傲嬌",
+    "libido": {name:"性冷感|好色|雙性好色", grade:"N|S|SSR", desc},  // 性慾傾向（影響 shyness 與親密演出）
     "proactivity": "主動|被動", "shyness": 0-100, "jealousy": 0-100,
     "loyalty": 0-100,                    // ★ 出軌判定的關鍵之一（低=易淪陷）
     "tone": "...", "catchphrases": [...], "reactions": {...},
@@ -155,7 +156,8 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
 - `_temptation()` / `_trigger_affair()` 內的係數 — 出軌與被奪走機率公式
 
 `render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`
-`persona_gen.py`：`ARCHETYPES`、`RARITY_WEIGHT`、`SPECIAL_TRAITS`、各種名字/外貌池
+`persona_gen.py`：`ARCHETYPES`、`RARITY_WEIGHT`、`SPECIAL_TRAITS`、`GRADE_WEIGHT`/`_roll_graded`
+（職業/體型/罩杯/眼睛的 N/R/S/SR/SSR 評級抽，吃 luck）、`LIBIDO`（性慾維度）、各種名字/外貌池
 
 ---
 
