@@ -20,7 +20,7 @@ from datetime import datetime
 
 import persona_gen
 import render_soul
-from render_soul import STAGES, MOODS, stage_index
+from render_soul import STAGES, MOODS, stage_index, ANGER_THRESHOLD
 
 # ── 路徑 ────────────────────────────────────────────────────
 REL_DIR = os.path.expanduser(os.environ.get("HERMES_REL_DIR", "~/.hermes/relationship"))
@@ -44,6 +44,13 @@ MILESTONE_NAME = {
     "朋友": "成為朋友", "曖昧": "曖昧開始", "戀人": "告白在一起",
     "未婚": "求婚成功", "夫妻": "結婚",
 }
+ANGER_GAIN = {"bad": 15, "fight": 30, "pester": 20}  # 各種惹怒互動的怒氣增量
+
+
+def _persona_grade(persona):
+    return (persona.get("overall") or {}).get("grade") or "R"
+
+
 INTERACT_DELTA = {  # quality -> (好感, 安全感, mood或None)
     "sweet": (8, 5, "開心"),
     "good": (5, 3, None),
@@ -182,11 +189,12 @@ def new_state(persona):
         "relationship": {
             "stage": "初識", "affinity": 10, "trust_security": 50,
             "mood": "普通", "intimacy_level": 0, "affair_count": 0,
+            "anger": 0,
         },
         "counters": {
             "interaction_count": 0, "days_since_stage": 0,
             "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
-            "overask_streak": 0, "help_streak": 0,
+            "overask_streak": 0, "help_streak": 0, "anger_strikes": 0,
         },
         "milestones": [], "memories": [], "pending_events": [],
         "flags": {"affair": False, "engaged": False, "married": False,
@@ -211,9 +219,14 @@ def cmd_newpersona(args, cfg):
     write_soul(state, cfg)
     p = persona
     n_traits = len(p.get("special_traits") or [])
-    # 刻意保留神祕感：只揭露性別與「有幾個特殊」，名字/個性/外貌/特殊內容都靠相處與「觀察」慢慢發現。
-    return ("✦ 你遇見了一個新的人。\n"
+    grade = _persona_grade(p)
+    limit = ANGER_THRESHOLD.get(grade, 9)
+    banner = {"SSR": "🌟🌟 SSR！傳說級的相遇 🌟🌟\n", "SR": "🟣 SR！稀有的相遇 🟣\n"}.get(grade, "")
+    # 刻意保留神祕感：只揭露性別、總評與「有幾個特殊」，名字/個性/外貌/特殊內容都靠相處與「觀察」慢慢發現。
+    return (banner + "✦ 你遇見了一個新的人。\n"
             f"  性別：{p['gender']}\n"
+            f"  人物稀有度：{grade}（綜合評分 {p.get('overall', {}).get('score', '?')}）\n"
+            f"  脾氣：被惹怒 {limit} 次就會出大事——稀有度越高越難伺候\n"
             f"  特殊：{n_traits} 個（內容先保密，靠相處和「觀察」自己發現）\n"
             "  SOUL.md 已改寫。請以「初次見面」的口吻開場，但**不要主動報出名字、個性、"
             "外貌或特殊屬性**——這些要讓玩家透過聊天與「觀察」慢慢挖掘，不要一次講白。")
@@ -372,6 +385,64 @@ def _trigger_affair(state, cfg, rival, briefing):
             "請依 SOUL『現在的危機』演出這個正在進行式的場景（尺度受 intimacy_mode 控）。")
 
 
+def _anger_blowup(state, cfg):
+    """惹怒次數達到稀有度門檻：依關係階段引爆後果。回傳給玩家/LLM 的說明文字。"""
+    rel, persona = state["relationship"], state["persona"]
+    name = persona["name"]
+    idx = stage_index(rel["stage"])
+    state["counters"]["anger_strikes"] = 0
+    rel["anger"] = 100
+    rel["mood"] = "生氣"
+
+    if idx <= 2:  # 初識/朋友/曖昧 → 直接離開（關係結束）
+        add_milestone(state, "離開", f"{name} 受夠了你一再惹怒她，頭也不回地離開了。")
+        ensure_dirs()
+        fn = os.path.join(ARCHIVE_DIR, f"{now_dt().strftime('%Y-%m-%d')}-{name}.json")
+        with open(fn, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        state["active"] = False
+        rel["stage"] = "分手"
+        save_state(state)
+        os.makedirs(os.path.dirname(SOUL_PATH) or ".", exist_ok=True)
+        with open(SOUL_PATH, "w", encoding="utf-8") as f:
+            f.write("# SOUL\n\n" + name + " 受夠了你，已經離開。\n\n"
+                    "現在沒有進行中的對象。請結束這段對話；"
+                    "想認識新的人，執行 `relationship.py newpersona`（或短指令 `newOne`）。\n")
+        return (f"\n💢💢【她離開了】你把 {name} 惹怒太多次，她受夠了、頭也不回地走了。"
+                "請演出她甩門離去，然後跳出角色提示玩家：目前沒有人了，請用 `newOne` 認識新的人。")
+
+    # 戀人/未婚/夫妻：找異性朋友訴苦 + 50% 出軌
+    events = state.setdefault("pending_events", [])
+    events[:] = [e for e in events if e.get("chain") != "rival"]
+    rival = persona_gen.generate_rival(persona)
+    rival["relation"] = "聽她訴苦的異性朋友"
+    briefing = []
+    cheated = random.random() < 0.5
+    if cheated:
+        rival["stage"] = 3
+        events.append(rival)
+        _trigger_affair(state, cfg, rival, briefing)
+    else:
+        rival["stage"] = 2
+        events.append(rival)
+
+    rname = _rival_name(rival)
+    if idx <= 4:  # 戀人/未婚 → 跑走
+        add_milestone(state, "怒而出走", f"被你惹怒太多次，{name} 奪門而出，跑去找 {rname} 訴苦。")
+        text = (f"\n💢💢【她跑走了】你把 {name} 惹怒太多次——她奪門而出、不接電話，"
+                f"跑去找 {rname} 訴苦。請演出她甩門離開，**本次聊天就此結束**"
+                "（跳出角色提示玩家：她走了，請先冷靜，下次對話再 `checkin` 看後續）。")
+    else:  # 夫妻 → 大吵一架（不走）
+        add_milestone(state, "大吵一架", f"被你惹怒太多次，{name} 和你大吵一架，跑去找 {rname} 訴苦。")
+        text = (f"\n💢💢【大吵一架】你把 {name} 惹怒太多次——她和你激烈大吵，"
+                f"之後冷戰，並開始找 {rname} 訴苦取暖。")
+    if cheated:
+        text += "\n" + "\n".join(briefing)
+    else:
+        text += f"\n（⚠ {rname} 趁虛而入，她正在動搖——再不哄好，事情會往最糟的方向去。）"
+    return text
+
+
 def _advance_rival(state, cfg, briefing):
     rel, persona = state["relationship"], state["persona"]
     sec = rel["trust_security"]
@@ -459,6 +530,21 @@ def cmd_checkin(args, cfg):
         state["counters"].get("stage_entered_at", state["counters"]["started_at"]))
 
     state["counters"]["help_streak"] = 0  # 每次新對話開頭，幫忙的邊際遞減重置
+    # 怒氣：10% 機率自然消氣，否則餘怒未消
+    anger = rel.get("anger", 0)
+    if anger > 0:
+        if random.random() < 0.10:
+            rel["anger"] = 0
+            briefing.append("【消氣了】她自己想通、氣消了——但別得寸進尺。")
+        else:
+            if anger >= 40:
+                rel["mood"] = "生氣"
+            grade = _persona_grade(state["persona"])
+            limit = ANGER_THRESHOLD.get(grade, 9)
+            strikes = state["counters"].get("anger_strikes", 0)
+            briefing.append(
+                f"💢【餘怒未消】上次的氣還沒消（怒氣 {anger}/100；惹怒紀錄 {strikes}/{limit}）。"
+                "請演出她臭臉/冷淡/翻舊帳，甚至主動繼續吵；要 `interact sweet` 道歉安撫才會消。")
     _apply_decay(state, cfg, briefing)
     if not state["flags"].get("affair"):
         _advance_rival(state, cfg, briefing)
@@ -522,6 +608,33 @@ def cmd_interact(args, cfg):
         ctr["help_streak"] = 0
     else:
         ctr["help_streak"] = 0
+    # ── 怒氣系統：惹怒累積（達稀有度門檻→引爆）、安撫消氣 ──
+    if q in ANGER_GAIN:
+        rel["anger"] = clamp(rel.get("anger", 0) + ANGER_GAIN[q])
+        strikes = ctr.get("anger_strikes", 0) + 1
+        ctr["anger_strikes"] = strikes
+        grade = _persona_grade(state["persona"])
+        limit = ANGER_THRESHOLD.get(grade, 9)
+        if strikes >= limit:
+            blow = _anger_blowup(state, cfg)
+            if not state.get("active"):
+                return f"互動（{q}）：{blow}"
+            note += blow
+        else:
+            note += (f"\n（怒氣 {rel['anger']}/100；惹怒紀錄 {strikes}/{limit}"
+                     f"（{grade} 級脾氣）——到達上限會出大事。）")
+    elif q in ("sweet", "good"):
+        prev = rel.get("anger", 0)
+        if prev > 0:
+            rel["anger"] = max(0, prev - (50 if q == "sweet" else 25))
+            if rel["anger"] == 0:
+                if q == "sweet" and ctr.get("anger_strikes", 0) > 0:
+                    ctr["anger_strikes"] -= 1
+                    note += "\n（她消氣了。誠懇的道歉有用——惹怒紀錄也消了一筆。）"
+                else:
+                    note += "\n（她氣消了。）"
+            else:
+                note += f"\n（怒氣降到 {rel['anger']}/100，她還在悶氣，請繼續哄。）"
     rel["affinity"] = clamp(rel["affinity"] + da)
     rel["trust_security"] = clamp(rel["trust_security"] + ds)
     if mood:
@@ -845,10 +958,13 @@ def cmd_status(args, cfg):
     rel = state["relationship"]
     c = state["counters"]
     p = state["persona"]
+    grade = _persona_grade(p)
+    limit = ANGER_THRESHOLD.get(grade, 9)
     out = [
-        f"● {p['name']}（{p['gender']}/{p['age']}/{p['archetype']}）",
+        f"● {p['name']}（{p['gender']}/{p['age']}/{p['archetype']}）｜稀有度 {grade}",
         f"  階段：{rel['stage']}｜好感 {rel['affinity']}/100｜安全感 {rel['trust_security']}/100",
         f"  心情：{rel['mood']}｜親密度 {rel.get('intimacy_level',0)}/5｜主動度 {p['proactivity']}｜忠誠 {p.get('loyalty',60)}",
+        f"  怒氣：{rel.get('anger',0)}/100｜惹怒紀錄 {c.get('anger_strikes',0)}/{limit}（{grade} 級脾氣，達上限會出大事）",
         f"  互動 {c['interaction_count']} 次｜在本階段 {days_between(c.get('stage_entered_at', c['started_at']))} 天",
     ]
     idx = stage_index(rel["stage"])

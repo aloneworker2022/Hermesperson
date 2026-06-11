@@ -30,6 +30,9 @@ MOOD_BEHAVIOR = {
 
 MOODS = list(MOOD_BEHAVIOR.keys())
 
+# 人物稀有度越高、脾氣越大：被惹怒幾次就會「出大事」（relationship.py 匯入使用）
+ANGER_THRESHOLD = {"N": 10, "R": 9, "S": 8, "SR": 4, "SSR": 2}
+
 TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "templates", "soul.template.md",
@@ -239,6 +242,21 @@ def _imgtag_section(state, config):
     return "\n".join(L)
 
 
+def _anger_line(state):
+    """怒氣／脾氣狀態行：含人物稀有度、怒氣值、惹怒紀錄與門檻。"""
+    rel = state["relationship"]
+    grade = (state["persona"].get("overall") or {}).get("grade") or "R"
+    limit = ANGER_THRESHOLD.get(grade, 9)
+    anger = rel.get("anger", 0)
+    strikes = state.get("counters", {}).get("anger_strikes", 0)
+    base = (f"我的脾氣是 **{grade} 級**（稀有度越高越難伺候）——被惹怒累積 {limit} 次就會出大事，"
+            f"目前紀錄 {strikes}/{limit}。")
+    if anger <= 0:
+        return f"怒氣 0/100，心平氣和。{base}"
+    return (f"怒氣 **{anger}/100**——我還在生你的氣！請演出餘怒未消：臭臉、冷淡、翻舊帳，"
+            f"甚至主動找碴繼續吵；要誠懇道歉安撫我才會消氣。{base}")
+
+
 def _memory_section(state, config):
     """把『我們之間發生過/我記住的事』算繪進 SOUL，讓她跨對話仍記得（最近 N 則）。"""
     items = []
@@ -421,6 +439,7 @@ def render(state, config=None):
         "{{SECURITY}}": str(rel.get("trust_security", 50)),
         "{{MOOD}}": mood,
         "{{MOOD_BEHAVIOR}}": MOOD_BEHAVIOR.get(mood, ""),
+        "{{ANGER_LINE}}": _anger_line(state),
         "{{PROACTIVITY}}": str(p.get("proactivity", 50)),
         "{{PROACTIVITY_NOTE}}": _proactivity_note(p.get("proactivity", 50)),
         "{{LIFE_OCCUPATION}}": life.get("occupation", p.get("occupation", "")),

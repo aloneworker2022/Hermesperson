@@ -97,6 +97,8 @@ skills/companion-soul/
     "likes": [...], "dislikes": [...], "quirk": "...",
     "appearance": { /* 身高/體型/髮/眼/風格/特徵；女含 bust、男含 physique */ },
     "special_traits": [ {name, rarity, mark, desc}, ... ],  // 抽卡屬性
+    "grades": { libido, occupation, build, bust, eyes, special },  // 各類別評級
+    "overall": { "grade": "N|R|S|SR|SSR", "score": 1.2 },  // 人物總評（compute_overall）→ 決定脾氣門檻
     "life": { occupation, schedule, social_circle, hobbies, current_arc }
   },
   "relationship": {
@@ -105,11 +107,13 @@ skills/companion-soul/
     "trust_security": 50,       // 安全感 0-100（低=易動搖/出軌/被奪走）
     "mood": "普通",             // MOODS 之一
     "intimacy_level": 0,
-    "affair_count": 0           // 出軌累計，越高再犯/被奪走機率越高
+    "affair_count": 0,          // 出軌累計，越高再犯/被奪走機率越高
+    "anger": 0                  // 怒氣 0-100：惹怒互動累積、sweet/good 消、checkin 10% 自然清空
   },
   "counters": {
     "interaction_count": 0, "days_since_stage": 0,
-    "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso
+    "last_interaction_at": iso, "started_at": iso, "stage_entered_at": iso,
+    "anger_strikes": 0          // 惹怒紀錄：達 ANGER_THRESHOLD[總評] 引爆 _anger_blowup
   },
   "milestones": [ {type, note, at}, ... ],
   "memories": [ {note, at}, ... ],   // remember 指令累積，render 取最近 14 則進 SOUL（跨對話記憶）
@@ -155,7 +159,8 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
 - `INTERACT_DELTA = {品質: (好感Δ, 安全感Δ, mood)}` — sweet/good/normal/bad/fight
 - `_temptation()` / `_trigger_affair()` 內的係數 — 出軌與被奪走機率公式
 
-`render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`
+`render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`、
+`ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）
 `persona_gen.py`：`ARCHETYPES`、`RARITY_WEIGHT`、`SPECIAL_TRAITS`、`GRADE_WEIGHT`/`_roll_graded`
 （職業/體型/罩杯/眼睛的 N/R/S/SR/SSR 評級抽，吃 luck）、`LIBIDO`（性慾維度）、各種名字/外貌池
 

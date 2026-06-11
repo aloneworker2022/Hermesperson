@@ -115,6 +115,19 @@ NAMES = {
 # ── 統一稀有度評級系統（職業/身材/罩杯/眼睛/性慾共用）──────────
 GRADE_ORDER = ["N", "R", "S", "SR", "SSR"]
 GRADE_WEIGHT = {"N": 100, "R": 60, "S": 16, "SR": 6, "SSR": 2}
+GRADE_VALUE = {"N": 0, "R": 1, "S": 2, "SR": 3, "SSR": 4}
+RARITY_TO_GRADE = {"普通": "N", "稀有": "S", "史詩": "SR", "傳說": "SSR"}  # 特殊屬性稀有度→評級
+
+
+def compute_overall(grades):
+    """人物總評分：把各類別評級換成分數取平均、四捨五入回評級。
+    grades: {類別: 'N'|'R'|'S'|'SR'|'SSR'}，回傳 {"grade": str, "score": float}。"""
+    vals = [GRADE_VALUE.get(g, 1) for g in grades.values() if g]
+    if not vals:
+        return {"grade": "R", "score": 1.0}
+    avg = sum(vals) / len(vals)
+    idx = min(len(GRADE_ORDER) - 1, int(avg + 0.5))
+    return {"grade": GRADE_ORDER[idx], "score": round(avg, 2)}
 
 
 def _roll_graded(pool, luck=0):
@@ -430,18 +443,25 @@ def _pick_n(pool, n):
 
 
 def generate_appearance(gender, luck=0):
-    """產生外貌/身材 dict（依性別給不同欄位；身材/罩杯/眼睛吃稀有度與 luck）。"""
-    eyes = _roll_graded(EYES, luck)[0]
+    """產生外貌/身材 dict（依性別給不同欄位；身材/罩杯/眼睛吃稀有度與 luck）。
+    內含 grades 子 dict 記錄各項評級（總評分用）。"""
+    eyes, eyes_g = _roll_graded(EYES, luck)
+    grades = {"eyes": eyes_g}
     if gender == "男":
         height = random.randint(168, 188)
         figure = {"build": random.choice(BUILD["男"]), "physique": random.choice(MALE_PHYSIQUE)}
     elif gender == "雙性":  # 女性化的胴體，另兼具男性性器（細節由 special_traits 與外貌段呈現）
         height = random.randint(155, 178)
-        figure = {"build": _roll_graded(BUILD_F, luck)[0], "bust": _roll_graded(BUST, luck)[0],
-                  "futanari": True}
+        build, build_g = _roll_graded(BUILD_F, luck)
+        bust, bust_g = _roll_graded(BUST, luck)
+        grades.update(build=build_g, bust=bust_g)
+        figure = {"build": build, "bust": bust, "futanari": True}
     else:  # 女
         height = random.randint(150, 172)
-        figure = {"build": _roll_graded(BUILD_F, luck)[0], "bust": _roll_graded(BUST, luck)[0]}
+        build, build_g = _roll_graded(BUILD_F, luck)
+        bust, bust_g = _roll_graded(BUST, luck)
+        grades.update(build=build_g, bust=bust_g)
+        figure = {"build": build, "bust": bust}
     return {
         "height_cm": height,
         **figure,
@@ -449,6 +469,7 @@ def generate_appearance(gender, luck=0):
         "eyes": eyes,
         "style": random.choice(STYLE.get(gender, STYLE["女"])),
         "feature": random.choice(FEATURE),
+        "grades": grades,
     }
 
 
@@ -465,7 +486,7 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
     proactivity = max(5, min(98, arch["base_proactivity"] + random.randint(-12, 12)))
     loyalty = _clamp(ARCHETYPE_LOYALTY.get(archetype, 60) + random.randint(-10, 10))
     quirk = random.choice(QUIRKS)
-    occupation = _roll_graded(OCCUPATIONS, luck)[0]
+    occupation, occupation_g = _roll_graded(OCCUPATIONS, luck)
 
     # 性慾傾向（第二維度）：雙性人固定雙性好色；其餘 性冷感(較常見)/好色，luck 拉高好色
     if gender == "雙性":
@@ -507,6 +528,15 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
             "current_arc": random.choice(ARCS),
         },
     }
+    # 人物總評分：各類別評級平均（性慾/職業/體型/罩杯/眼睛/最高特殊屬性）
+    grades = {"libido": lib_grade, "occupation": occupation_g}
+    grades.update(persona["appearance"].get("grades", {}))
+    traits = persona["special_traits"]
+    if traits:
+        top = max((t["rarity"] for t in traits), key=RARITY_ORDER.index)
+        grades["special"] = RARITY_TO_GRADE.get(top, "N")
+    persona["grades"] = grades
+    persona["overall"] = compute_overall(grades)
     return persona
 
 
