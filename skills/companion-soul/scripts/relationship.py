@@ -93,6 +93,8 @@ DEFAULT_CONFIG = {
     "user_pet_name": None,         # 自訂她對你的稱呼
     "neglect_grace_days": 1,       # 幾天不理才開始衰退
     "rare_luck": 0,                # 特殊屬性幸運值 0~100（越高越容易抽到高稀有度）
+    "img_tags": "off",             # on 時每則回覆第一行輸出 ⟦標籤⟧ 供外部專案(如 Talkinter)套圖
+    "img_tag_avatar": "01",        # 表情標籤的前綴代號，如 ⟦01:smile⟧
 }
 
 
@@ -884,7 +886,7 @@ def cmd_config(args, cfg):
             v = [x for x in v.split(",") if x]
         elif v.lower() in ("none", "null", ""):
             v = None
-        elif v.isdigit():
+        elif v.isdigit() and k != "img_tag_avatar":  # 代號保留字串（如 "01" 的前導零）
             v = int(v)
         cfg[k] = v
         save_config(cfg)

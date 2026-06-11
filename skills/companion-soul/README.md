@@ -99,6 +99,8 @@ python3 relationship.py restore           # 還原最初的 SOUL.md
 | `user_pet_name` | 任意 | 自訂她對你的稱呼 |
 | `neglect_grace_days` | 數字 | 幾天不理才開始衰退（預設 1） |
 | `rare_luck` | 0~100 | 特殊屬性幸運值，越高越容易抽到史詩/傳說（預設 0） |
+| `img_tags` | on / off | **圖片標籤模式**（預設 off）：開啟後她每則回覆第一行輸出 `⟦01:smile⟧` 這類標籤，供外部聊天介面（如 Talkinter）解析套圖 |
+| `img_tag_avatar` | 任意代號 | 表情標籤前綴（預設 `01`），如 `⟦01:angry⟧` |
 
 ## 檔案
 

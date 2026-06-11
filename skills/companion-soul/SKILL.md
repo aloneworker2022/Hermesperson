@@ -102,6 +102,8 @@ python3 scripts/relationship.py <command>
 - `user_gender` / `user_pet_name`：影響她對你的稱呼
 - `neglect_grace_days`：幾天不理才開始衰退（預設 1）
 - `rare_luck`：特殊屬性抽卡幸運值 0~100，越高越容易抽到史詩/傳說（預設 0）
+- `img_tags`：on / off（預設 off）。**on 時每則回覆第一行必須輸出 `⟦類別:標籤⟧` 圖片標籤**
+  （詞彙表與規則算繪在 SOUL「🖼️ 圖片標籤」段），供外部介面解析套圖；`img_tag_avatar` 設表情前綴代號（預設 `01`）
 
 ## 細節參考（需要時再讀）
 - `references/personalities.md` — 各原型完整演出手冊
