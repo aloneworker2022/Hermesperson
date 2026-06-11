@@ -95,6 +95,8 @@ DEFAULT_CONFIG = {
     "rare_luck": 0,                # 特殊屬性幸運值 0~100（越高越容易抽到高稀有度）
     "img_tags": "off",             # on 時每則回覆第一行輸出 ⟦標籤⟧ 供外部專案(如 Talkinter)套圖
     "img_tag_avatar": "01",        # 表情標籤的前綴代號，如 ⟦01:smile⟧
+    "img_expr_set": "basic",       # basic=只用 5 種心情表情 / full=14 種
+    "img_scene": "off",            # off=不輸出場景標籤 / basic=3 種簡單場景 / full=9 種
 }
 
 

@@ -101,6 +101,8 @@ python3 relationship.py restore           # 還原最初的 SOUL.md
 | `rare_luck` | 0~100 | 特殊屬性幸運值，越高越容易抽到史詩/傳說（預設 0） |
 | `img_tags` | on / off | **圖片標籤模式**（預設 off）：開啟後她每則回覆第一行輸出 `⟦01:smile⟧` 這類標籤，供外部聊天介面（如 Talkinter）解析套圖 |
 | `img_tag_avatar` | 任意代號 | 表情標籤前綴（預設 `01`），如 `⟦01:angry⟧` |
+| `img_expr_set` | basic / full | 表情數量（**預設 basic＝只用 5 種心情表情**：smile/calm/sad/angry/nervous；full＝14 種） |
+| `img_scene` | off / basic / full | 場景標籤（**預設 off 不輸出**；basic＝home/outdoor/night 3 種；full＝9 種） |
 
 ## 檔案
 

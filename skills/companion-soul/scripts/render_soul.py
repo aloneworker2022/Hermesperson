@@ -167,12 +167,13 @@ def _appearance_section(persona, config, stage="初識"):
     return "\n".join(lines)
 
 
-# 心情 → 預設表情標籤（img_tags 用）
+# 心情 → 預設表情標籤（img_tags 用）；basic 集合就是這 5 種
 MOOD_TO_TAG = {"開心": "smile", "普通": "calm", "低落": "sad", "生氣": "angry", "不安": "nervous"}
-
-EXPR_TAGS = ["smile", "laugh", "shy", "blush", "angry", "pout", "sad", "cry",
+EXPR_BASIC = ["smile", "calm", "sad", "angry", "nervous"]
+EXPR_FULL = ["smile", "laugh", "shy", "blush", "angry", "pout", "sad", "cry",
              "nervous", "surprised", "calm", "love", "seductive", "sleepy"]
-SCENE_TAGS = ["home", "work", "cafe", "street", "outdoor", "night", "date", "bed", "bath"]
+SCENE_BASIC = ["home", "outdoor", "night"]
+SCENE_FULL = ["home", "work", "cafe", "street", "outdoor", "night", "date", "bed", "bath"]
 SEX_TAGS = ["foreplay", "intimate", "climax", "ntr", "caught"]
 
 
@@ -185,28 +186,34 @@ def _imgtag_section(state, config):
     mood = state["relationship"].get("mood", "普通")
     default_tag = MOOD_TO_TAG.get(mood, "calm")
     mode = cfg.get("intimacy_mode", "explicit")
+    exprs = EXPR_FULL if str(cfg.get("img_expr_set", "basic")).lower() == "full" else EXPR_BASIC
+    scene_set = str(cfg.get("img_scene", "off")).lower()
+    scenes = SCENE_FULL if scene_set == "full" else (SCENE_BASIC if scene_set == "basic" else [])
+
     L = [
         "## 🖼️ 圖片標籤（每一則回覆都要，給外部程式解析）",
         "",
         "**我的每一則回覆，第一行必須是圖片標籤行**，格式為一個或多個 `⟦類別:標籤⟧`，"
-        "之後換行才開始說話。標籤行只能有標籤、全小寫、只能用下面詞彙表裡的詞"
-        "（外部程式用 `⟦([a-z0-9_]+):([a-z0-9_]+)⟧` 解析後套圖，亂寫會對不到圖）：",
+        "之後換行才開始說話。標籤行只能有標籤、全小寫、**只能用下面列出的詞**"
+        "（外部程式用 `⟦([a-z0-9_]+):([a-z0-9_]+)⟧` 解析後套圖；用了清單外的詞會對不到圖）：",
         "",
-        f"1. **表情（必填，恰好一個）**：`⟦{avatar}:表情⟧`，表情 ∈ " + " / ".join(EXPR_TAGS),
-        "2. **場景（選填）**：`⟦scene:場景⟧`，場景 ∈ " + " / ".join(SCENE_TAGS),
+        f"1. **表情（必填，恰好一個）**：`⟦{avatar}:表情⟧`，表情只能是 ── " + " / ".join(exprs),
     ]
+    n = 1
+    if scenes:
+        n += 1
+        L.append(f"{n}. **場景（選填）**：`⟦scene:場景⟧`，場景只能是 ── " + " / ".join(scenes))
     if mode != "off":
-        L.append("3. **親密場景（選填，僅親密/出軌劇情時）**：`⟦sex:標籤⟧`，標籤 ∈ "
+        n += 1
+        L.append(f"{n}. **親密場景（選填，僅親密/出軌劇情時）**：`⟦sex:標籤⟧`，標籤 ∈ "
                  + " / ".join(SEX_TAGS)
                  + "（`ntr`=出軌/被奪走相關場景、`caught`=撞見現行）")
-    else:
-        L.append("3. 親密類標籤（`sex:*`）在 intimacy_mode=off 時**禁用**。")
     L += [
         "",
         f"- 表情跟著我**當下真實的情緒**走（此刻心情「{mood}」→ 預設 `⟦{avatar}:{default_tag}⟧`，"
         "對話中情緒變了就換）。",
-        f"- 範例：`⟦{avatar}:shy⟧⟦scene:cafe⟧` 然後換行說話。",
-        "- **不能省略**這一行，也不要把標籤混進對話文字裡。",
+        f"- 範例：`⟦{avatar}:{default_tag}⟧` 然後換行說話。",
+        "- **不能省略**這一行，也不要把標籤混進對話文字裡；清單沒有的詞一律不要用。",
     ]
     return "\n".join(L)
 
