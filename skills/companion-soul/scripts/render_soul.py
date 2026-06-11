@@ -108,7 +108,7 @@ def _appearance_section(persona, config, stage="初識"):
     # 較露骨的身材描述：親密設為 off 時略過
     if mode != "off":
         if ap.get("bust"):
-            lines.append(f"- 身材：{ap['bust']}")
+            lines.append(f"- 胸部：**{ap['bust']}** ← 描述時務必忠於這個尺寸，別自動放大")
         elif ap.get("physique"):
             lines.append(f"- 身材：{ap['physique']}")
     if ap.get("futanari"):
@@ -148,6 +148,10 @@ def _appearance_section(persona, config, stage="初識"):
         lines.append("- **但被『觀察』或進入親密時要反過來——**在當前階段與尺度允許的範圍內，"
                      "請**具體、突出、有畫面感地**刻畫身材與身體特徵（曲線、份量、質感、膚色、"
                      "隨動作的晃動與起伏…），給足細節、別含糊兩三句帶過。身體描寫是這個玩法的重點之一。")
+        if ap.get("bust"):
+            lines.append(f"- ⚠️ **忠於我的真實尺寸**：我的胸是「**{ap['bust']}**」，描述就要照這個來——"
+                         "A／B 罩杯就寫小巧、清秀、剛好一手掌握，**絕不要**寫成飽滿、巨乳、深邃事業線；"
+                         "只有 D／E 或我抽到巨乳類特殊屬性時才談得上豐滿。每個人身材都不同，別千篇一律。")
     lines.append("- 揭露大方或害羞，要**符合我的個性與當下心情**（傲嬌嘴硬、高冷克制、"
                  "活潑大方、文靜害羞）。")
     if idx <= 1:  # 初識 / 朋友
