@@ -31,7 +31,7 @@ python3 scripts/relationship.py <command>
 |---|---|
 | `status` | 看目前關係摘要與下一步門檻 |
 | `newpersona [--gender 女/男/雙性] [--force]` | 隨機生成全新人格、重寫 SOUL.md（關係進行中會擋，防劈腿；不指定預設女，隨機只給女或男，雙性需明指） |
-| `checkin [--seed N]` | **每次對話開頭跑**：冷落衰退 + 情敵/偶發事件 + 生活 life-log + 升級提示 |
+| `checkin [--seed N]` | **每次對話開頭跑**：冷落衰退 + 情敵/偶發事件 + 生活 life-log + 升級提示 + **【此刻】作息旁白**（依台灣時區的真實時間回報她正在上班/睡覺/休息——請把它融入演出：上班回得短、睡著被敲=被你吵醒，依她的睡眠型反應） |
 | `interact <sweet/good/normal/bad/fight/pester/help> [--liked]` | 一段有意義互動後調整好感/安全感/心情；`pester`=被你強人所難（連續加重扣分）；`help`=她盡心幫了你、覺得被依賴而加好感（依階段遞增、連續使喚邊際遞減；任務剛好是她喜歡的加 `--liked`） |
 | `propose --by user/persona --to <階段>` | 提出升級（告白/求婚），依門檻與個性同意或婉拒 |
 | `advance [--force]` / `regress` | 推進/退回一個階段 |
@@ -115,6 +115,7 @@ python3 scripts/relationship.py <command>
 - `img_tags`：on / off（預設 off）。**on 時每則回覆第一行必須輸出 `⟦類別:標籤⟧` 圖片標籤**
   （詞彙表與規則算繪在 SOUL「🖼️ 圖片標籤」段），供外部介面解析套圖；`img_tag_avatar` 設表情前綴代號（預設 `01`）
 - `img_expr_set`：basic（預設，5 種心情表情）/ full（14 種）；`img_scene`：off（預設）/ basic（3 種）/ full（9 種）。詞彙表會依設定只列出允許的詞
+- `timezone`：IANA 時區名（預設 `Asia/Taipei`）。影響作息推斷與衰退天數；環境變數 `HERMES_TZ` 可覆寫
 
 ## 細節參考（需要時再讀）
 - `references/personalities.md` — 各原型完整演出手冊

@@ -248,6 +248,45 @@ def generate_rival(persona):
         "allure": allure,
         "stage": 0,
     }
+# ── 職業作息表：occupation -> (上班時, 下班時, 週末休, 描述) ────
+# 時段可跨夜（如 22→3）；desc 給 SOUL 與 checkin 旁白用。
+OCC_ROUTINE = {
+    "咖啡店店員":  (7, 16, False, "早上七點開店備料、拉花，傍晚四點交班下班"),
+    "插畫家":     (10, 19, True,  "在家接案，上午十點開工，趕稿時會畫到半夜"),
+    "護理師":     (8, 20, False, "醫院輪三班，常日夜顛倒，排到夜班就整夜在醫院"),
+    "高中老師":   (7, 17, True,  "七點半到校早自習，下午五點放學改作業"),
+    "軟體工程師": (9, 18, True,  "九點半進公司寫扣，偶爾上線出包就得加班到深夜"),
+    "花店老闆":   (8, 18, False, "清早去花市批花，白天顧店包花束"),
+    "樂團鍵盤手": (19, 24, False, "晚上排練或表演，白天補眠、接零星教課"),
+    "書店員":     (10, 21, False, "書店輪早晚班，晚班要顧到九點打烊"),
+    "甜點師":     (6, 15, False, "清晨六點進烘焙坊備料，下午三點下班"),
+    "獸醫":       (9, 18, True,  "門診九點到晚上六點，偶爾遇到急診就得加班"),
+    "平面設計師": (9, 18, True,  "九點上班，案子趕的時候熬夜改稿是日常"),
+    "研究生":     (10, 22, True,  "上午進實驗室/圖書館，常待到晚上十點"),
+    "健身教練":   (10, 21, False, "排課制，早晚尖峰帶課，下午比較空"),
+    "聲優":       (9, 18, True,  "進棚錄音時間不定，沒通告的日子在家練聲"),
+    "圖書館員":   (8, 17, False, "八點半開館、五點閉館，輪到假日班要顧館"),
+    "調酒師":     (18, 2, False, "傍晚六點開吧，調酒到凌晨兩點打烊"),
+    "按摩師":     (13, 22, False, "下午一點到店，晚上十點收工，客人多在晚上"),
+    "半套店小姐": (15, 23, False, "下午三點上班接客服務，晚上十一點下班"),
+    "學生":       (8, 16, True,  "白天上課，下課後社團或打工"),
+    "模特兒":     (10, 19, True,  "通告制——拍攝/走秀時間不定，沒通告就保養健身"),
+    "泡泡浴小姐": (14, 24, False, "下午兩點上班，泡泡浴服務到午夜"),
+    "酒店小姐":   (22, 3, False, "晚上十點上班陪酒，凌晨三點下班，偶爾被熟客「帶出場」過夜"),
+    "應召女":     (21, 4, False, "晚上九點開始接通告出勤，深夜到客人住處，凌晨回家"),
+    "showgirl":   (13, 22, True,  "活動通告制，展場/夜場演出，妝髮要提早數小時"),
+    "家庭主婦":   (8, 17, False, "白天操持家務、買菜煮飯，行程自由但瑣事不少"),
+}
+
+# 睡眠型（生理時鐘）：(名稱, 睡覺時, 起床時, 描述, 被吵醒的反應)
+CHRONOTYPES = [
+    ("早起型", 23, 6, "早睡早起，清晨精神最好，晚上十一點就睏了", "迷糊但不太生氣，會小聲問怎麼了"),
+    ("夜貓子", 3, 11, "越夜越有精神，凌晨三點才睡、中午前都叫不醒", "起床氣很重，會不耐煩地哀嚎"),
+    ("愛睡午覺", 0, 7, "作息正常但一定要睡午覺（13~15點），午覺被吵會盧很久", "撒嬌抱怨，要哄才肯醒"),
+    ("淺眠易怒", 1, 8, "睡眠很淺、一點聲音就醒，被吵醒會炸毛", "起床氣爆炸，口氣很衝（請演出來）"),
+    ("隨和好睡", 0, 8, "沾枕就睡、哪裡都能睡，被吵醒也不太生氣", "揉揉眼睛就醒了，還會笑著說沒關係"),
+]
+
 ARCS = ["最近在準備一個大案子，壓力有點大", "剛搬到新租屋處，還在適應",
         "存錢想去一趟旅行", "養的植物開花了好開心", "工作上遇到難搞的人",
         "在學一樣新東西（線上課程）", "老家有點事要回去一趟", "最近迷上一部新劇"]
@@ -487,6 +526,11 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
     loyalty = _clamp(ARCHETYPE_LOYALTY.get(archetype, 60) + random.randint(-10, 10))
     quirk = random.choice(QUIRKS)
     occupation, occupation_g = _roll_graded(OCCUPATIONS, luck)
+    ws, we, wkoff, wdesc = OCC_ROUTINE.get(occupation, (9, 18, True, "一般日班"))
+    chrono_name, sleep_at, wake_at, chrono_desc, wake_react = random.choice(CHRONOTYPES)
+    routine = {"work_start": ws, "work_end": we, "weekend_off": wkoff, "work_desc": wdesc,
+               "chrono": chrono_name, "sleep_at": sleep_at, "wake_at": wake_at,
+               "chrono_desc": chrono_desc, "wake_react": wake_react}
 
     # 性慾傾向（第二維度）：雙性人固定雙性好色；其餘 性冷感(較常見)/好色，luck 拉高好色
     if gender == "雙性":
@@ -519,8 +563,9 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
         "contrast": f"是{archetype}的人，但{quirk}",  # 反差小設定
         "life": {
             "occupation": occupation,
+            "routine": routine,
             "schedule": {
-                "平日": "白天上班/忙碌，晚上比較有空",
+                "平日": wdesc,
                 "週末": random.choice(["喜歡待在家充電", "會出門走走、找朋友", "睡到中午再出門"]),
             },
             "social_circle": _pick_n(FRIEND_NAMES, 3),

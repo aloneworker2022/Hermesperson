@@ -162,7 +162,12 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
 `render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`、
 `ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）
 `persona_gen.py`：`ARCHETYPES`、`RARITY_WEIGHT`、`SPECIAL_TRAITS`、`GRADE_WEIGHT`/`_roll_graded`
-（職業/體型/罩杯/眼睛的 N/R/S/SR/SSR 評級抽，吃 luck）、`LIBIDO`（性慾維度）、各種名字/外貌池
+（職業/體型/罩杯/眼睛的 N/R/S/SR/SSR 評級抽，吃 luck）、`LIBIDO`（性慾維度）、
+`OCC_ROUTINE`（職業→工作時段/描述）、`CHRONOTYPES`（睡眠型）、各種名字/外貌池
+
+時間：`now_dt()` 依 `config.timezone`（預設 Asia/Taipei，可用 `HERMES_TZ` 覆寫）回傳 naive
+datetime；測試用 `--now`（注意要放在子指令**前**：`relationship.py --now ... checkin`）。
+作息推斷在 `_routine_now()`（睡覺>工作>休息，支援跨夜時段與週末休）。
 
 ---
 

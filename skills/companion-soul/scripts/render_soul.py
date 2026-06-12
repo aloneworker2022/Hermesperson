@@ -242,6 +242,16 @@ def _imgtag_section(state, config):
     return "\n".join(L)
 
 
+def _routine_line(life):
+    """作息型態行：睡眠型 + 工作時段 + 被吵醒反應（舊存檔無 routine 給通用句）。"""
+    rt = (life or {}).get("routine")
+    if not rt:
+        return "白天忙碌、晚上比較有空（一般日班作息）"
+    return (f"**{rt.get('chrono','')}**——{rt.get('chrono_desc','')}。"
+            f"工作時段：{rt.get('work_desc','')}。"
+            f"睡著時被吵醒的反應：{rt.get('wake_react','')}。")
+
+
 def _anger_line(state):
     """怒氣／脾氣狀態行：含人物稀有度、怒氣值、惹怒紀錄與門檻。"""
     rel = state["relationship"]
@@ -445,6 +455,7 @@ def render(state, config=None):
         "{{LIFE_OCCUPATION}}": life.get("occupation", p.get("occupation", "")),
         "{{LIFE_WEEKDAY}}": life.get("schedule", {}).get("平日", ""),
         "{{LIFE_WEEKEND}}": life.get("schedule", {}).get("週末", ""),
+        "{{LIFE_ROUTINE}}": _routine_line(life),
         "{{LIFE_FRIENDS}}": "、".join(life.get("social_circle", [])),
         "{{LIFE_HOBBIES}}": "、".join(life.get("hobbies", [])),
         "{{LIFE_ARC}}": life.get("current_arc", ""),

@@ -62,10 +62,25 @@ INTERACT_DELTA = {  # quality -> (好感, 安全感, mood或None)
 }
 
 _NOW = None  # 由 --now 覆寫的「現在」
+_TZ = None   # 時區快取（config timezone / 環境變數 HERMES_TZ，預設台灣）
+
+
+def _tz():
+    global _TZ
+    if _TZ is None:
+        name = os.environ.get("HERMES_TZ") or load_config().get("timezone") or "Asia/Taipei"
+        try:
+            from zoneinfo import ZoneInfo
+            _TZ = ZoneInfo(name)
+        except Exception:  # 無 tzdata 時退回固定 UTC+8
+            from datetime import timezone as _dtz, timedelta as _td
+            _TZ = _dtz(_td(hours=8))
+    return _TZ
 
 
 def now_dt():
-    return _NOW or datetime.now()
+    """『現在』：依設定時區（預設台灣 Asia/Taipei），回傳 naive datetime 與存檔格式一致。"""
+    return _NOW or datetime.now(_tz()).replace(tzinfo=None)
 
 
 def parse_dt(s):
@@ -104,6 +119,7 @@ DEFAULT_CONFIG = {
     "img_tag_avatar": "01",        # 表情標籤的前綴代號，如 ⟦01:smile⟧
     "img_expr_set": "basic",       # basic=只用 5 種心情表情 / full=14 種
     "img_scene": "off",            # off=不輸出場景標籤 / basic=3 種簡單場景 / full=9 種
+    "timezone": "Asia/Taipei",     # 人物與玩家共用的時區（影響作息/衰退天數計算）
 }
 
 
@@ -294,6 +310,32 @@ def _life_log(persona):
         friend=random.choice(life.get("social_circle") or ["朋友"]),
         arc=life.get("current_arc", "最近的生活"),
     )
+
+
+def _in_window(h, start, end):
+    """h 是否落在 [start, end) 時段（支援跨夜，如 22→3）。"""
+    if start <= end:
+        return start <= h < end
+    return h >= start or h < end
+
+
+def _routine_now(persona, dt):
+    """依現在時間推斷她正在做什麼。回傳 (描述, 是否在睡, 被吵醒反應)；舊存檔無 routine 回 None。"""
+    rt = (persona.get("life") or {}).get("routine")
+    if not rt:
+        return None
+    h, wd = dt.hour, dt.weekday()  # wd 0=週一
+    sleeping = _in_window(h, rt.get("sleep_at", 0), rt.get("wake_at", 7))
+    nap = rt.get("chrono") == "愛睡午覺" and 13 <= h < 15
+    working = (_in_window(h, rt.get("work_start", 9), rt.get("work_end", 18))
+               and not (rt.get("weekend_off") and wd >= 5))
+    if sleeping or nap:
+        kind = "睡午覺" if (nap and not sleeping) else "睡覺"
+        return (f"正在{kind}（{rt.get('chrono','')}：{rt.get('chrono_desc','')}）",
+                True, rt.get("wake_react", "迷糊地醒來"))
+    if working:
+        return (f"正在工作——{rt.get('work_desc','')}", False, None)
+    return (f"下班／休息中（{rt.get('chrono','')}，{rt.get('chrono_desc','')}）", False, None)
 
 
 def _apply_decay(state, cfg, briefing):
@@ -548,6 +590,19 @@ def cmd_checkin(args, cfg):
     _apply_decay(state, cfg, briefing)
     if not state["flags"].get("affair"):
         _advance_rival(state, cfg, briefing)
+    # 此刻作息：依時區的真實時間推斷她正在幹嘛
+    now = now_dt()
+    rn = _routine_now(state["persona"], now)
+    if rn:
+        act, sleeping, react = rn
+        wname = "一二三四五六日"[now.weekday()]
+        line = f"【此刻】現在 {now.strftime('%H:%M')}（週{wname}），她{act}。"
+        if sleeping:
+            line += (f" 你這時候敲她等於把她吵醒——被吵醒的反應：{react}。"
+                     "請演出剛被挖起來的樣子（迷糊/惱/撒嬌依個性），不是精神奕奕。")
+        else:
+            line += "請把這個情境融入她的回覆（上班忙就回得短或偷偷回、休息時才有空閒聊）。"
+        briefing.append(line)
     life = _life_log(state["persona"])
     briefing.append(f"【生活】她最近：{life}（可主動跟你分享）。")
     _check_upgrade_hint(state, cfg, briefing)
