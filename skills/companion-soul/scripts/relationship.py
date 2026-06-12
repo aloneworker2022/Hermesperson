@@ -215,7 +215,7 @@ def new_state(persona):
         "milestones": [], "memories": [], "pending_events": [],
         "inbox": [],  # 她趁你不在時傳來、凍結待讀的主動訊息（見 §信箱）
         "flags": {"affair": False, "engaged": False, "married": False,
-                  "leaving": False, "caught_in_act": False},
+                  "leaving": False, "caught_in_act": False, "date_spotted": False},
     }
 
 
@@ -298,10 +298,24 @@ LIFE_LOG_TEMPLATES = [
 ]
 FLAVOR = ["有點累但還行", "超順利、心情不錯", "遇到一點鳥事", "很無聊、一直想你", "忙到翻"]
 FLAVOR2 = ["挺開心的", "結果還是想你了", "有點小確幸", "覺得要是你在就好了"]
+# 鋪墊期（露臉/接近）的情敵會以「日常人物」身分混進她的生活分享——讓你更早無痛察覺
+LIFE_LOG_RIVAL = [
+    "和{friend}他們聚會，{npc}也在，大家鬧成一團",
+    "去{hobby}的時候又碰到{npc}，順口聊了幾句",
+    "今天{npc}順手幫了我一個小忙，人挺好的",
+    "{friend}約大家吃飯，{npc}講了個冷笑話，全場笑翻",
+]
 
 
-def _life_log(persona):
+def _life_log(persona, rival=None):
     life = persona.get("life", {})
+    if rival and _rival_phase(rival) != "追求" and random.random() < 0.4:
+        npc = _rival_name(rival)
+        circle = [f for f in (life.get("social_circle") or []) if f != npc] or ["朋友"]
+        return random.choice(LIFE_LOG_RIVAL).format(
+            npc=npc, friend=random.choice(circle),
+            hobby=random.choice(life.get("hobbies") or ["走走"]),
+        )
     tpl = random.choice(LIFE_LOG_TEMPLATES)
     return tpl.format(
         occupation=life.get("occupation", persona.get("occupation", "")),
@@ -415,6 +429,30 @@ def _temptation(rel, persona, rival):
             + 8 * rel.get("affair_count", 0))
 
 
+# 旁觀者場景：她正和追求者在外面，被你撞見——你成了看著他們的第三者
+DATE_SPOTS = ["咖啡廳", "餐廳", "百貨公司", "河堤步道", "電影院門口", "居酒屋"]
+
+
+def _spot_date(state, rival, briefing, how="encounter", fresh=False):
+    """設下 date_spotted 旗標並產生旁觀者場景的 briefing。fresh=True 表示本次 checkin 才剛撞見
+    （讓同一次 checkin 後段的 _advance_rival 不要立刻把它收掉）。"""
+    name = _rival_name(rival)
+    spot = random.choice(DATE_SPOTS)
+    rival["date_spot"] = spot
+    if fresh:
+        rival["date_fresh"] = True
+    state["flags"]["date_spotted"] = True
+    if how == "inbox":
+        lead = (f"她稍早報備要和 {name} 出去、你一直沒回——人已經出門了。"
+                f"你趕到{spot}，遠遠就看見他們坐在一起")
+    else:
+        lead = f"你路過{spot}，撞見她正和 {name} 坐在一起"
+    briefing.append(
+        f"👀【旁觀者】{lead}。她沒發現你。這一刻你成了局外人——請以**你的旁觀視角**描寫"
+        "他們的互動（談笑、距離、氛圍，尺度見 SOUL『現在的危機』），她渾然不覺；"
+        "然後把選擇交給玩家：`date watch` 默默看完／`date interrupt` 上前打斷（不一定有好結果）。")
+
+
 def _trigger_affair(state, cfg, rival, briefing):
     """觸發出軌：一定發生關係；並依條件決定是『出軌(可攤牌)』還是『她直接離開你』。"""
     rel, persona = state["relationship"], state["persona"]
@@ -516,6 +554,23 @@ def _advance_rival(state, cfg, briefing):
     events = state.setdefault("pending_events", [])
     active = next((e for e in events if e.get("chain") == "rival"), None)
 
+    # 旁觀者場景收尾：上次撞見的約會，玩家沒出手（沒跑 date watch/interrupt）→ 散場
+    if state["flags"].get("date_spotted"):
+        if active and active.pop("date_fresh", None):
+            return  # 本次 checkin 才剛撞見（信箱觸發），等玩家決定
+        state["flags"]["date_spotted"] = False
+        if not active:
+            return
+        active.pop("date_fresh", None)
+        if random.random() < 0.5:
+            active["stage"] = min(3, active.get("stage", 0) + 1)
+            briefing.append(f"👀【約會散場】那天你終究沒出現。她回來後隻字不提，"
+                            f"但那次約會讓 {_rival_name(active)} 又前進了一步。")
+        else:
+            briefing.append("👀【約會散場】那天你終究沒出現。她回來後對你有點刻意地好——"
+                            "那點心虛，她自己也說不清。")
+        return
+
     # 生成新對象（朋友以上、無進行中事件、未出軌）→ 從鋪墊期「露臉」起步，不是一上來就示好
     if not active and stage_index(rel["stage"]) >= 1 and not state["flags"].get("affair"):
         prob = (0.12 + (0.18 if sec < 50 else 0.0)
@@ -564,11 +619,33 @@ def _advance_rival(state, cfg, briefing):
         briefing.append(f"【新面孔·持續】{_rival_action(active, 0)}。")
         return
 
-    # ── 追求期：既有 stage 0–3 浪漫鏈（公式不動）──
-    T = _temptation(rel, persona, active)
+    # ── 追求期：既有 stage 0–3 浪漫鏈 ──
+    # 追得越久火力越猛：heat 每次 checkin 累積 → 魅力緩升、誘惑加壓、越難勸退
+    heat = active.get("heat", 0) + 1
+    active["heat"] = heat
+    if heat >= 3:
+        active["allure"] = min(92, active.get("allure", 50) + 2)
+    T = _temptation(rel, persona, active) + 3 * (heat - 1)
+    # 趁虛而入：超過寬限天數沒互動，正在猛攻的他不會放過這個空檔
+    if (heat >= 2 and days_between(state["counters"].get("last_interaction_at"))
+            > cfg.get("neglect_grace_days", 1)):
+        T += 12
+
+    # 旁觀者場景：她正和他在外面，被你撞見（你成了第三者視角）
+    if (active.get("stage", 0) >= 2 and not state["flags"].get("date_spotted")
+            and random.random() < 0.22):
+        _spot_date(state, active, briefing, how="encounter")
+        return
 
     # 化解：安全感高且誘惑壓力不大（她夠忠誠、情敵沒那麼致命）
     if sec >= 70 and T < 30:
+        # ……但追得越久他越不死心：有機率擋下化解、攻勢反而升級（猛攻）
+        if heat >= 2 and random.random() < min(0.55, 0.15 * (heat - 1)):
+            briefing.append(
+                f"【情敵·猛攻】她想拉開距離，{name} 卻不死心——攻勢反而升級"
+                f"（追得越久火力越猛，魅力已升到 {active.get('allure','?')}）。"
+                "你陪得再好也別大意：只要一個空檔，他就會趁虛而入。")
+            return
         if active["stage"] >= 2:
             events.remove(active)
             rel["trust_security"] = clamp(sec + 5)
@@ -591,7 +668,8 @@ def _advance_rival(state, cfg, briefing):
         return
 
     # 中間：維持、慢燃
-    briefing.append(f"【情敵·持續】{_rival_action(active, active['stage'])}。")
+    hot = "（他越追越猛，別拖太久。）" if heat >= 3 else ""
+    briefing.append(f"【情敵·持續】{_rival_action(active, active['stage'])}。{hot}")
 
 
 def _check_upgrade_hint(state, cfg, briefing):
@@ -662,7 +740,7 @@ def cmd_checkin(args, cfg):
         else:
             line += "請把這個情境融入她的回覆（上班忙就回得短或偷偷回、休息時才有空閒聊）。"
         briefing.append(line)
-    life = _life_log(state["persona"])
+    life = _life_log(state["persona"], _active_rival(state))
     briefing.append(f"【生活】她最近：{life}（可主動跟你分享）。")
     _check_upgrade_hint(state, cfg, briefing)
 
@@ -1229,6 +1307,84 @@ def _deliver_inbox(state, briefing):
                      "（`interact sweet` 安撫）。")
     state["inbox"] = []  # 打開＝已讀＝等同回覆，重置鬧脾氣鏈
     briefing.insert(0, "\n".join(lines))
+    # 背叛報備且你一直沒回 → 她可能真的已經出門了：你趕到時只能遠遠看著（旁觀者場景）
+    rival = _active_rival(state)
+    if (any(m.get("theme") == "outing_rival" for m in inbox)
+            and rival and _rival_phase(rival) == "追求" and rival.get("stage", 0) >= 2
+            and not state["flags"].get("affair")
+            and not state["flags"].get("date_spotted")
+            and random.random() < 0.5):
+        _spot_date(state, rival, briefing, how="inbox", fresh=True)
+
+
+# ── 旁觀者抉擇：撞見她和追求者在外面（date_spotted）──────────
+def cmd_date(args, cfg):
+    """你撞見她正和追求者約會/碰面，成了旁觀的第三者：watch 默默偷看全程 / interrupt 上前打斷。
+    偷看她不會知道（不寫進她的記憶）；打斷是賭注——可能讓她如夢初醒，也可能當眾鬧僵把她往對方推。"""
+    state = load_state()
+    if not state or not state.get("active"):
+        return "目前沒有進行中的關係。"
+    if not state.get("flags", {}).get("date_spotted"):
+        return "你現在沒有撞見他們在外面，沒有可旁觀的場景。"
+    if getattr(args, "seed", None) is not None:
+        random.seed(args.seed)
+    rel = state["relationship"]
+    rival = _active_rival(state)
+    name = _rival_name(rival) if rival else "對方"
+    spot = (rival or {}).get("date_spot", "外面")
+    state["flags"]["date_spotted"] = False
+    if rival:
+        rival.pop("date_fresh", None)
+    briefing = []
+
+    if args.action == "watch":
+        # 默默看完：她永遠不會知道——所以不記 milestone（那是「她的」記憶）。
+        # 看到什麼反映她動搖的深度：投入＝動搖加深；心不在焉＝她惦著你。
+        engrossed = bool(rival) and random.random() < (
+            0.40 + 0.10 * max(0, rival.get("stage", 2) - 2))
+        if engrossed:
+            rival["stage"] = min(3, rival.get("stage", 0) + 1)
+            msg = (f"你在{spot}的角落默默看完了全程。她笑得比在你面前還自然，{name} 說什麼她都接得住"
+                   "——這場約會讓他又前進了一步（動搖加深）。她不知道你看見了；這幅畫面只屬於你，"
+                   "之後要攤牌、裝不知道、還是加倍對她好，由你決定。")
+        else:
+            msg = (f"你在{spot}的角落默默看著。她其實心不在焉——頻頻看手機（也許在等你回訊息）、"
+                   f"對 {name} 的話常常只是笑笑帶過。看起來，她心裡惦記的還是你。"
+                   "她不知道你來過；要不要說破，由你決定。")
+    else:  # interrupt
+        stage = rival.get("stage", 2) if rival else 2
+        p = (0.45 + (rel["trust_security"] - 50) * 0.006 + (rel["affinity"] - 50) * 0.004
+             - (0.12 if stage >= 3 else 0.0))
+        if random.random() < max(0.10, min(0.85, p)):
+            if rival:
+                rival["stage"] = max(0, stage - 1)
+            rel["trust_security"] = clamp(rel["trust_security"] + 6)
+            if rel["mood"] in ("不安", "低落"):
+                rel["mood"] = "普通"
+            add_milestone(state, "當面攔下", f"你在{spot}當面撞見她和 {name}，她心虛又如夢初醒。")
+            msg = (f"你走了過去。她一抬頭看到你，整個人僵住——先是心虛、慌張，然後是一種被接住的安心。"
+                   f"{name} 識相地先走了。回家的路上她一直黏著你（安全感+6，情敵退一步）。"
+                   "請演出她的心虛、和你們把話攤開來談的那段路。")
+        else:
+            rel["affinity"] = clamp(rel["affinity"] - 6)
+            rel["anger"] = clamp(rel.get("anger", 0) + 15)
+            rel["mood"] = "生氣"
+            if rival:
+                rival["stage"] = min(3, stage + 1)
+            add_milestone(state, "當場鬧僵", f"你在{spot}打斷她和 {name} 的約會，當眾鬧得很難看。")
+            msg = (f"你走過去的瞬間就變了調——她覺得你在跟蹤她、當眾給她難堪，"
+                   f"反而站到 {name} 那邊說話（好感-6、怒氣+15、情敵進一步）。"
+                   "請演出她的羞憤與冷臉；這口氣要靠 `interact sweet` 慢慢哄回來。")
+            if rival and rival["stage"] >= 3 and random.random() < 0.30:
+                _trigger_affair(state, cfg, rival, briefing)
+                msg += ("\n最糟的是——她賭氣地當著你的面挽住他的手臂走了。\n"
+                        + "\n".join(briefing))
+    save_state(state)
+    write_soul(state, cfg)
+    tail = f"\n（現況：好感 {rel['affinity']}、安全感 {rel['trust_security']}、心情 {rel['mood']}"
+    if rival and any(e is rival for e in state.get("pending_events", [])):
+        tail += f"；情敵 {name} 階段 {rival.get('stage', '?')}/3"
+    return msg + tail + "。）"
 
 
 # ── 玩家對情敵的主導：吃醋警告 / 要她設界線 / 表達信任 ──────────
@@ -1316,6 +1472,9 @@ def cmd_status(args, cfg):
         nxt = STAGES[idx + 1]
         ok, why = _eligible(state, cfg, nxt)
         out.append(f"  下一步「{nxt}」：{'✓ 可推進' if ok else why}")
+    if state["flags"].get("date_spotted"):
+        out.append("  👀 你撞見她正和追求者在外面：`date watch` 默默偷看 / `date interrupt` 上前打斷"
+                   "（有風險）；下次 checkin 前不出手就散場。")
     if state["flags"].get("caught_in_act"):
         out.append("  🔥 你當場撞見她和情敵正在交配（變本加厲）：見 SOUL『現在的危機』。")
     if state["flags"].get("leaving"):
@@ -1329,7 +1488,8 @@ def cmd_status(args, cfg):
         e = evs[0]
         ph = _rival_phase(e)
         if ph == "追求":
-            out.append(f"  情敵：{_rival_label(e)} 魅力{e.get('allure','?')}｜階段 {e['stage']}/3")
+            hot = f"｜火力 {e['heat']}（越拖越猛）" if e.get("heat", 0) >= 3 else ""
+            out.append(f"  情敵：{_rival_label(e)} 魅力{e.get('allure','?')}｜階段 {e['stage']}/3{hot}")
         else:
             out.append(f"  新面孔（{ph}）：{_rival_label(e)} 魅力{e.get('allure','?')}"
                        "——尚未成為追求者，現在多陪她最容易化解。")
@@ -1403,6 +1563,10 @@ def build_parser():
     sp = sub.add_parser("rival")
     sp.add_argument("action", choices=["warn", "boundary", "trust"])
 
+    sp = sub.add_parser("date")
+    sp.add_argument("action", choices=["watch", "interrupt"])
+    sp.add_argument("--seed", type=int, default=None)
+
     sp = sub.add_parser("cron-msg")
     sp.add_argument("--slot", choices=["morning", "noon", "evening", "night"], default=None)
     sp.add_argument("--seed", type=int, default=None)
@@ -1425,7 +1589,7 @@ DISPATCH = {
     "rerender": cmd_rerender,
     "checkin": cmd_checkin, "interact": cmd_interact, "advance": cmd_advance,
     "regress": cmd_regress, "propose": cmd_propose, "intimacy": cmd_intimacy,
-    "rival": cmd_rival, "remember": cmd_remember,
+    "rival": cmd_rival, "date": cmd_date, "remember": cmd_remember,
     "breakup": cmd_breakup, "cron-msg": cmd_cronmsg, "config": cmd_config,
     "inbox": cmd_inbox,
 }

@@ -347,8 +347,9 @@ def _crisis_section(state, config):
     affair = flags.get("affair")
     leaving = flags.get("leaving")
     caught = flags.get("caught_in_act")
+    dating = flags.get("date_spotted") and not affair
     wavering = rival and rival.get("stage", 0) >= 2 and not affair
-    if not (affair or leaving or wavering):
+    if not (affair or leaving or wavering or dating):
         return ""
 
     L = ["## ⚠️ 現在的危機", ""]
@@ -357,6 +358,24 @@ def _crisis_section(state, config):
                  + (f"（{rival.get('relation','')}，{rival.get('looks','')}；{rival.get('edge','')}）"
                     if rival.get("relation") else "")
                  + f"，手段是「{rival.get('tactic','')}」、魅力 {rival.get('allure','?')}。")
+
+    if dating:
+        # 旁觀者場景：玩家撞見她正和追求者在外面——以玩家的第三者視角演出
+        spot = (rival or {}).get("date_spot", "外面")
+        L += [
+            f"- 👀 **你撞見他們正在約會**：她此刻就和 {who} 在{spot}——而她**不知道你看見了**。",
+            "  請以**你的旁觀視角**描寫他們的互動（談笑、距離、肢體語言），她渾然不覺；",
+            "  玩家可選：`date watch` 默默看完（她永遠不會知道）／`date interrupt` 上前打斷——",
+            "  打斷是賭注：可能讓她心虛醒悟，也可能當眾鬧僵、反而把她往對方推。",
+        ]
+        if mode == "off":
+            L.append("- **畫面**：只描寫公開場合的同桌互動（聊天、用餐），不帶任何曖昧細節。")
+        elif mode == "fade":
+            L.append("- **畫面**：氛圍曖昧但點到為止——靠得近了點、笑得多了點，留白給想像。")
+        else:
+            L.append("- **畫面**：可具體描寫刺眼的曖昧肢體語言（湊近耳語、不經意的碰觸、"
+                     "他替她撥頭髮）——尚未越線，但每個細節都在挑動你。")
+        return "\n".join(L)
 
     if wavering:
         L += [

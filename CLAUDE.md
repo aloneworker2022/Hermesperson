@@ -120,6 +120,8 @@ skills/companion-soul/
   "pending_events": [ /* 進行中的事件，情敵鏈是 {"chain":"rival", phase, origin, stage, ...} */ ],
                                    // phase: 露臉→接近→追求（鋪墊期；追求才進 stage 0–3 與出軌判定。舊存檔無 phase→當追求）
                                    // origin: circle 生活圈／outing 興趣·放假新認識（決定 relation 取向）
+                                   // heat: 追求期每次 checkin +1（火力：T 加壓、allure 進化、猛攻擋化解，舊存檔無→0）
+                                   // date_spot/date_fresh: 旁觀者場景的地點與「本回合才剛撞見」標記
   "inbox": [ {text, at, seq, tone, theme}, ... ],  // 她趁你不在傳來、凍結待讀的主動訊息（非同步、不推播）
                                    // tone: fresh|worried|annoyed（鬧脾氣升級鏈，依稀有度）；theme: daily|outing_innocent|outing_rival
                                    // cron-msg 決定要不要發/第幾則/主題 → inbox add 凍結 → checkin 打開遞送並清空（=已讀=回覆）
@@ -127,7 +129,8 @@ skills/companion-soul/
     "affair": false,        // 出軌旗標亮起（待原諒或分手）
     "engaged": false, "married": false,
     "leaving": false,       // 她決定為情敵離開你（需安全感≥75 才挽回）
-    "caught_in_act": false  // 夫妻+再犯時當場撞見正在交配（變本加厲）
+    "caught_in_act": false, // 夫妻+再犯時當場撞見正在交配（變本加厲）
+    "date_spotted": false   // 你撞見她正和追求者在外面（旁觀者場景）→ date watch/interrupt 處理，不出手下次 checkin 散場
   }
 }
 ```
@@ -169,6 +172,12 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
   鬧脾氣升級鏈耐性（越稀有越沒耐性）；`_inbox_tone()` 依序位算 fresh/worried/annoyed
 - `OUTING_INNOCENT` / `OUTING_RIVAL` / `OUTING_AFFAIR` — 行程告知內容池（興趣報備 vs 跟情敵出去的 NTR 告知）；
   `_choose_theme()` 決定 cron-msg 主題、`_theme_lines()` 產生指引、`_leisure_now()` 算下班/放假在做什麼
+- 追求期火力（heat）— `_advance_rival()` 追求段：`T += 3×(heat−1)`、heat≥3 每回合 allure+2(≤92)、
+  猛攻擋化解 `min(0.55, 0.15×(heat−1))`、冷落空檔 `T+12`——後期陪伴不再保證化解
+- `DATE_SPOTS` / `_spot_date()` / `cmd_date()` — 旁觀者場景（你撞見她和追求者在外面）：
+  checkin 觸發 0.22(stage≥2)、信箱 outing_rival 已讀不回觸發 0.5；watch 投入率 0.40+0.10×(stage−2)、
+  interrupt 成功率 0.45±(安全感/好感係數)−0.12(stage3)、鬧僵到頂 0.30 被當場帶走；
+  `LIFE_LOG_RIVAL`（鋪墊期情敵混入生活旁白，0.4）
 
 `render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`、
 `ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）
