@@ -1101,7 +1101,18 @@ def cmd_inbox(args, cfg):
     inbox = state.setdefault("inbox", [])
     action = args.action
     if action == "add":
-        text = (args.text or "").strip()
+        # 從 REMAINDER 解析出 --theme 與訊息文字（前後順序不限、支援 --theme=x）
+        rest = list(getattr(args, "rest", []) or [])
+        theme, words = "daily", []
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if tok == "--theme" and i + 1 < len(rest):
+                theme = rest[i + 1]; i += 2; continue
+            if tok.startswith("--theme="):
+                theme = tok.split("=", 1)[1]; i += 1; continue
+            words.append(tok); i += 1
+        text = " ".join(words).strip()
         if not text:
             return "（inbox add 需要訊息內容：inbox add \"<她的訊息>\"）"
         grade = _persona_grade(state["persona"])
@@ -1112,7 +1123,7 @@ def cmd_inbox(args, cfg):
         inbox.append({
             "text": text, "at": now_dt().strftime("%Y-%m-%dT%H:%M:%S"),
             "seq": seq, "tone": _inbox_tone(seq, max_msgs),
-            "theme": getattr(args, "theme", "daily") or "daily",
+            "theme": theme or "daily",
         })
         save_state(state)
         return f"（已凍結第 {seq} 則訊息入信箱，等對方下次 `checkin` 打開才會看到。）"
@@ -1323,9 +1334,9 @@ def build_parser():
 
     sp = sub.add_parser("inbox")
     sp.add_argument("action", choices=["add", "peek", "clear"])
-    sp.add_argument("text", nargs="?", default=None, help="add 時她的訊息原文")
-    sp.add_argument("--theme", default="daily",
-                    help="訊息主題（daily / outing_innocent / outing_rival）")
+    # 用 REMAINDER 收 action 之後的一切，theme 自己解析 → 訊息文字與 --theme 前後順序都不限
+    sp.add_argument("rest", nargs=argparse.REMAINDER,
+                    help='add 時她的訊息原文（可加 --theme daily|outing_innocent|outing_rival）')
 
     sp = sub.add_parser("config")
     sp.add_argument("action", choices=["show", "set"])
