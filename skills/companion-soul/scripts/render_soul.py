@@ -426,11 +426,21 @@ def render(state, config=None):
 
     rival_hint = "目前沒有特別的對象"
     for ev in state.get("pending_events", []):
-        if ev.get("chain") == "rival" and ev.get("stage", 0) >= 1:
-            who = ev.get("name") or ev.get("npc") or "某人"
-            rel_tag = f"（{ev['relation']}）" if ev.get("relation") else ""
+        if ev.get("chain") != "rival":
+            continue
+        who = ev.get("name") or ev.get("npc") or "某人"
+        rel_tag = f"（{ev['relation']}）" if ev.get("relation") else ""
+        phase = ev.get("phase", "追求")  # 舊存檔無 phase → 視為追求期
+        if phase == "露臉":
+            rival_hint = f"最近生活裡常出現一個人{rel_tag}，就普通往來、我沒多想"
+        elif phase == "接近":
+            rival_hint = (f"有個「{who}」{rel_tag}最近常找我、對我特別關照，"
+                          "好像有點在意我（但我還沒往那邊想）")
+        elif ev.get("stage", 0) >= 1:
             rival_hint = f"最近有個「{who}」{rel_tag}對我有點意思"
-            break
+        else:
+            rival_hint = f"最近有個「{who}」{rel_tag}開始對我示好"
+        break
 
     repl = {
         "{{NAME}}": p.get("name", "？"),

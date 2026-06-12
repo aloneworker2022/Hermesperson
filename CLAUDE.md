@@ -117,7 +117,9 @@ skills/companion-soul/
   },
   "milestones": [ {type, note, at}, ... ],
   "memories": [ {note, at}, ... ],   // remember 指令累積，render 取最近 14 則進 SOUL（跨對話記憶）
-  "pending_events": [ /* 進行中的事件，情敵鏈是 {"chain":"rival", ...} */ ],
+  "pending_events": [ /* 進行中的事件，情敵鏈是 {"chain":"rival", phase, origin, stage, ...} */ ],
+                                   // phase: 露臉→接近→追求（鋪墊期；追求才進 stage 0–3 與出軌判定。舊存檔無 phase→當追求）
+                                   // origin: circle 生活圈／outing 興趣·放假新認識（決定 relation 取向）
   "inbox": [ {text, at, seq, tone, theme}, ... ],  // 她趁你不在傳來、凍結待讀的主動訊息（非同步、不推播）
                                    // tone: fresh|worried|annoyed（鬧脾氣升級鏈，依稀有度）；theme: daily|outing_innocent|outing_rival
                                    // cron-msg 決定要不要發/第幾則/主題 → inbox add 凍結 → checkin 打開遞送並清空（=已讀=回覆）
@@ -141,7 +143,7 @@ skills/companion-soul/
 ### A) `checkin`（每次對話開頭跑）— `cmd_checkin()`
 ```
 _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感（neglect_grace_days 寬限）
-  → _advance_rival()  情敵鏈推進：搭訕→動搖→出軌；含 _temptation() 誘惑值與 _trigger_affair()
+  → _advance_rival()  情敵鏈推進：露臉→接近→追求(鋪墊期)→搭訕→動搖→出軌；追求期才含 _temptation()/_trigger_affair()
   → _life_log()       生成「她今天的生活」旁白
   → _check_upgrade_hint()  夠門檻就提示可升級
   → write_soul()      重繪 SOUL.md
@@ -160,7 +162,9 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
 `relationship.py`：
 - `STAGE_THRESHOLDS = {階段: (好感, 安全感, 天數)}` — 升級三達標門檻
 - `INTERACT_DELTA = {品質: (好感Δ, 安全感Δ, mood)}` — sweet/good/normal/bad/fight
-- `_temptation()` / `_trigger_affair()` 內的係數 — 出軌與被奪走機率公式
+- `_temptation()` / `_trigger_affair()` 內的係數 — 出軌與被奪走機率公式（**只在 phase=追求 時生效**）
+- `RIVAL_PHASES = ["露臉","接近","追求"]` / `RIVAL_PHASE_DESC` — 情敵鋪墊期（追求才進 stage 0–3）；
+  `_advance_rival()` 鋪墊段的淡出率(安全感≥65)、推進率(冷落/低忠誠加速)、`_maybe_seed_outing_rival()`(0.25)
 - `INBOX_PATIENCE = {grade: (留言上限, 等待時數)}` / `INBOX_ANGER = {grade: 怒氣量}` — 主動訊息信箱的
   鬧脾氣升級鏈耐性（越稀有越沒耐性）；`_inbox_tone()` 依序位算 fresh/worried/annoyed
 - `OUTING_INNOCENT` / `OUTING_RIVAL` / `OUTING_AFFAIR` — 行程告知內容池（興趣報備 vs 跟情敵出去的 NTR 告知）；
@@ -170,6 +174,8 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
 `ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）
 `persona_gen.py`：`ARCHETYPES`、`RARITY_WEIGHT`、`SPECIAL_TRAITS`、`GRADE_WEIGHT`/`_roll_graded`
 （職業/體型/罩杯/眼睛的 N/R/S/SR/SSR 評級抽，吃 luck）、`LIBIDO`（性慾維度）、
+`HOBBY_POOL`（興趣依氣質分桶）/`ARCHETYPE_HOBBY_VIBE`（原型→偏好氣質）/`_pick_hobbies()`（加權抽，貼個性）、
+`RIVAL_RELATION`/`RIVAL_RELATION_OUTING`（情敵身分池，依 origin 取向）、`generate_rival(persona, origin)`、
 `OCC_ROUTINE`（職業→工作時段/描述）、`CHRONOTYPES`（睡眠型）、各種名字/外貌池
 
 時間：`now_dt()` 依 `config.timezone`（預設 Asia/Taipei，可用 `HERMES_TZ` 覆寫）回傳 naive
@@ -189,7 +195,8 @@ datetime；測試用 `--now`（注意要放在子指令**前**：`relationship.p
 （稱呼）；注意所有 `stage_index()` 比較與 `idx >= N` 的硬編界線（如夫妻=5）。
 
 **加一個人格原型**：在 `persona_gen.ARCHETYPES` 加一筆（tone/catchphrases/reactions/
-shyness/jealousy…），需要的話加進 `ARCHETYPE_LOYALTY`；演出手冊補 `references/personalities.md`。
+shyness/jealousy…），需要的話加進 `ARCHETYPE_LOYALTY` 與 `ARCHETYPE_HOBBY_VIBE`（偏好氣質桶，
+缺則退回全桶等權）；演出手冊補 `references/personalities.md`。
 
 **加一個特殊屬性（抽卡）**：在 `SPECIAL_TRAITS` 對應稀有度池加項目；稀有度權重在 `RARITY_WEIGHT`。
 

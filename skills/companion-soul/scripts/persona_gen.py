@@ -172,8 +172,44 @@ LIBIDO = {
     "雙性好色": ("SSR", -20, "身為雙性人，慾望特別旺盛、又主動又敏感；"
                             "對性事毫不遮掩、大膽索求，常忍不住想用自己那話兒。"),
 }
-HOBBIES = ["烘焙", "養多肉", "彈吉他", "玩拍立得", "蒐集明信片", "夜騎腳踏車",
-           "追劇", "畫畫", "煮宵夜", "逛二手書店", "拼拼圖", "做手帳"]
+# 興趣依「氣質」分桶（綁個性、不綁職業）。生成時依原型偏好桶加權抽 → 像她本來就會喜歡的事。
+HOBBY_POOL = {
+    "文靜": ["逛二手書店", "拼拼圖", "做手帳", "寫鋼筆字", "插花", "聽黑膠", "蒐集明信片", "泡茶"],
+    "文藝": ["畫畫", "底片攝影", "彈吉他", "看獨立電影", "寫小說", "玩陶藝", "玩拍立得", "逛美術館"],
+    "活潑": ["夜騎腳踏車", "唱歌", "衝浪", "打羽球", "登山", "跳街舞", "露營", "潛水"],
+    "居家": ["烘焙", "養多肉", "煮宵夜", "追劇", "做甜點", "擼貓", "玩桌遊", "種香草"],
+    "時髦": ["逛展", "調香", "蒐集穿搭", "咖啡巡禮", "研究指甲彩繪", "逛選物店", "品紅酒", "夜店小酌"],
+}
+# 攤平池（給需要「全部興趣」的場合或退化用）
+HOBBIES = [h for hs in HOBBY_POOL.values() for h in hs]
+# 各原型偏好的氣質桶（抽興趣時加權；其餘桶仍有低機率被抽到 → 保留反差空間）
+ARCHETYPE_HOBBY_VIBE = {
+    "活潑開朗": ["活潑", "居家"],
+    "高冷":     ["文靜", "文藝", "時髦"],
+    "傲嬌":     ["文藝", "居家"],
+    "文靜溫柔": ["文靜", "居家"],
+    "天然呆":   ["居家", "文靜"],
+    "御姊":     ["時髦", "文藝"],
+    "病嬌":     ["文靜", "文藝"],
+}
+
+
+def _pick_hobbies(archetype, n=2):
+    """依原型偏好氣質加權抽 n 個興趣：偏好桶權重高、其餘桶低，仍保留隨機與一點反差。"""
+    prefs = ARCHETYPE_HOBBY_VIBE.get(archetype, list(HOBBY_POOL))
+    weighted = []
+    for vibe, items in HOBBY_POOL.items():
+        w = 5 if vibe in prefs else 1  # 偏好桶權重 5、其餘 1
+        weighted += [(h, w) for h in items]
+    picks, seen = [], set()
+    while weighted and len(picks) < n:
+        pool, wts = zip(*weighted)
+        choice = random.choices(pool, weights=wts, k=1)[0]
+        if choice not in seen:
+            seen.add(choice)
+            picks.append(choice)
+        weighted = [(h, w) for (h, w) in weighted if h != choice]
+    return picks
 FRIEND_NAMES = ["阿May", "小薰", "靜姊", "阿哲", "Nina", "學姊", "店長", "小不點", "阿凱", "Coco"]
 # 放假行程（綁她的興趣與朋友）：{hobby}=她的興趣、{friend}=她身邊的人
 WEEKEND_PLANS = [
@@ -192,8 +228,12 @@ RIVAL_NAME = {
     "男": ["承翰", "宇辰", "Leo", "David", "阿杰", "Ryan", "俊傑", "Mark", "哲瑋", "Kevin"],
     "女": ["雅婷", "曉君", "Vivian", "思妤", "Coco", "欣怡", "Tina", "琪琪", "語潔", "Amber"],
 }
+# 追求者來源（origin）：circle＝她日常生活圈長出來的人；outing＝興趣/放假行程新認識的人
 RIVAL_RELATION = ["公司同事", "部門主管", "大學學長姊", "健身教練", "常來的熟客",
-                  "社團學長姊", "合作的客戶", "新搬來的鄰居", "舊情人", "網路上認識的人"]
+                  "社團學長姊", "合作的客戶", "新搬來的鄰居", "舊情人", "朋友介紹的人"]
+# outing 來源的身分（可帶入她某個興趣字眼 {hobby}）
+RIVAL_RELATION_OUTING = ["{hobby}認識的同好", "旅行同團認識的人", "活動上加到的人",
+                         "{hobby}場合常遇到的人", "朋友聚會新認識的人", "課堂上同組的人"]
 RIVAL_LOOKS = {
     "男": ["高大斯文、戴細框眼鏡", "陽光健壯、笑起來很乾淨", "成熟穩重、總是西裝筆挺",
             "痞帥、嘴角總掛著笑", "清秀溫柔、聲音很好聽"],
@@ -241,20 +281,31 @@ RIVAL_TACTIC = {
 }
 
 
-def generate_rival(persona):
-    """依對象生成一個立體的情敵 NPC dossier。情敵性別預設與對象相反。"""
+def generate_rival(persona, origin=None):
+    """依對象生成一個立體的情敵 NPC dossier。情敵性別預設與對象相反。
+    origin: 'circle'（生活圈）/ 'outing'（興趣·放假新認識）/ None（隨機）。
+    新生成的對象一律從鋪墊期 phase='露臉' 起步——他先出現在她生活裡，慢慢才變追求者。"""
     pg = "男" if persona.get("gender") == "女" else "女"
+    if origin not in ("circle", "outing"):
+        origin = random.choices(["circle", "outing"], weights=[6, 4], k=1)[0]
     edge_text, edge_bonus = random.choice(RIVAL_EDGE)
     allure = _clamp(random.randint(40, 70) + edge_bonus + random.randint(-5, 5))
+    if origin == "outing":
+        hobby = random.choice((persona.get("life") or {}).get("hobbies") or ["興趣"])
+        relation = random.choice(RIVAL_RELATION_OUTING).format(hobby=hobby)
+    else:
+        relation = random.choice(RIVAL_RELATION)
     return {
         "chain": "rival",
         "name": random.choice(RIVAL_NAME[pg]),
         "gender": pg,
-        "relation": random.choice(RIVAL_RELATION),
+        "origin": origin,
+        "relation": relation,
         "looks": random.choice(RIVAL_LOOKS[pg]),
         "edge": edge_text,
         "tactic": random.choice(list(RIVAL_TACTIC)),
         "allure": allure,
+        "phase": "露臉",   # 鋪墊期起點（露臉→接近→追求；追求才進入 stage 0–3）
         "stage": 0,
     }
 # ── 職業作息表：occupation -> (上班時, 下班時, 週末休, 描述) ────
@@ -551,7 +602,7 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
     shyness = _clamp(arch["shyness"] + shy_delta)  # 好色更放得開、性冷感更保守
 
     # 興趣與放假行程（綁在一起，週末行程從她的興趣/朋友套出來）
-    hobbies = _pick_n(HOBBIES, 2)
+    hobbies = _pick_hobbies(archetype, random.choice([2, 3]))
     friends = _pick_n(FRIEND_NAMES, 3)
     weekend = random.choice(WEEKEND_PLANS).format(
         hobby=random.choice(hobbies), friend=random.choice(friends))

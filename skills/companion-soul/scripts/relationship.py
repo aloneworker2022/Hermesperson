@@ -368,6 +368,12 @@ def _apply_decay(state, cfg, briefing):
 
 
 # 情敵/出軌 事件鏈
+# 鋪墊期：他先「出現在她生活裡」→「開始主動接近」，才正式變追求者進入 stage 0–3。
+RIVAL_PHASES = ["露臉", "接近", "追求"]   # 追求 = 進入既有 stage 0–3 浪漫鏈（單一來源）
+RIVAL_PHASE_DESC = {
+    "露臉": "{npc}最近常出現在她的生活圈（{relation}），目前只是普通往來、沒什麼曖昧",
+    "接近": "{npc}開始會主動找她、對她特別關照（{relation}），接觸變得頻繁起來",
+}
 RIVAL_STAGE_DESC = {
     0: "{npc} 開始對她示好/搭訕。她（依個性）跟你提起這件事。",
     1: "{npc} 持續獻殷勤、約她。她在觀察你的反應。",
@@ -380,6 +386,11 @@ def _rival_name(r):
     return r.get("name") or r.get("npc") or "某人"
 
 
+def _rival_phase(r):
+    """情敵目前的鋪墊期。舊存檔無 phase → 視為已在『追求』期（維持現行行為）。"""
+    return r.get("phase", "追求")
+
+
 def _rival_label(r):
     """情敵身分標籤，如：阿凱（健身教練・金錢攻勢）。"""
     bits = [b for b in (r.get("relation"), r.get("tactic")) if b]
@@ -387,7 +398,10 @@ def _rival_label(r):
 
 
 def _rival_action(r, stage):
-    """這個階段他具體做了什麼（依手段；舊資料退回通用描述）。"""
+    """他具體做了什麼：鋪墊期（露臉/接近）用 phase 描述，追求期才用手段 stage 文案。"""
+    phase = _rival_phase(r)
+    if phase in RIVAL_PHASE_DESC:
+        return RIVAL_PHASE_DESC[phase].format(npc=_rival_name(r), relation=r.get("relation", ""))
     seq = persona_gen.RIVAL_TACTIC.get(r.get("tactic"))
     tpl = seq[stage] if seq and 0 <= stage < len(seq) else RIVAL_STAGE_DESC.get(stage, "")
     return tpl.format(npc=_rival_name(r))
@@ -502,7 +516,7 @@ def _advance_rival(state, cfg, briefing):
     events = state.setdefault("pending_events", [])
     active = next((e for e in events if e.get("chain") == "rival"), None)
 
-    # 生成新情敵（朋友以上、無進行中事件、未出軌）
+    # 生成新對象（朋友以上、無進行中事件、未出軌）→ 從鋪墊期「露臉」起步，不是一上來就示好
     if not active and stage_index(rel["stage"]) >= 1 and not state["flags"].get("affair"):
         prob = (0.12 + (0.18 if sec < 50 else 0.0)
                 + max(0, 55 - persona.get("loyalty", 60)) * 0.004
@@ -511,15 +525,46 @@ def _advance_rival(state, cfg, briefing):
             active = persona_gen.generate_rival(persona)
             events.append(active)
             briefing.append(
-                f"【情敵·新】{_rival_label(active)} 出現了——{active.get('looks','')}，"
-                f"{active.get('edge','')}（魅力 {active.get('allure',50)}）。"
-                f"{_rival_action(active, 0)}。她（依個性）會跟你提起。")
+                f"【生活·新面孔】她生活裡最近多了一個人：{_rival_label(active)}"
+                f"（{active.get('looks','')}）。{_rival_action(active, 0)}——"
+                "還沒有曖昧，她（依個性）可能只是順口跟你提起。現在多陪她，這人就成不了氣候。")
             return
 
     if not active:
         return
 
     name = _rival_name(active)
+    phase = _rival_phase(active)
+
+    # ── 鋪墊期（露臉 / 接近）：還不是危機，只推進「越來越常出現/主動」或自然淡出 ──
+    if phase != "追求":
+        # 你夠用心（安全感高）→ 鋪墊期就自然淡出，越早越容易化解
+        if sec >= 65 and random.random() < (0.5 if phase == "露臉" else 0.3):
+            events.remove(active)
+            briefing.append(f"【新面孔·淡出】{name} 的事自然就淡了——你陪她陪得夠，沒給對方留空間。")
+            return
+        # 推進機率：冷落/安全感低/忠誠低 → 越快 露臉→接近→追求
+        adv = (0.35 + (0.25 if sec < 50 else 0.0)
+               + max(0, 55 - persona.get("loyalty", 60)) * 0.004)
+        if random.random() < adv:
+            nxt = RIVAL_PHASES[RIVAL_PHASES.index(phase) + 1]
+            active["phase"] = nxt
+            if nxt == "接近":
+                if sec < 50:
+                    rel["trust_security"] = clamp(sec - 2)  # 預警期僅極輕微影響
+                briefing.append(
+                    f"【新面孔·接近】{_rival_action(active, 0)}。她（依個性）跟你提起，自己還沒往那邊想"
+                    "——但他主動靠近就是有意思了，這是訊號：現在多陪她最有效。")
+            else:  # 接近 → 追求：正式成為追求者，自此走既有 stage 0–3 鏈（stage 仍為 0）
+                briefing.append(
+                    f"【情敵·成形】{_rival_label(active)} 從普通往來變成了追求者——"
+                    f"{_rival_action(active, 0)}（魅力 {active.get('allure',50)}）。她得開始面對這份心意了。")
+            return
+        # 沒推進：維持鋪墊、給旁白
+        briefing.append(f"【新面孔·持續】{_rival_action(active, 0)}。")
+        return
+
+    # ── 追求期：既有 stage 0–3 浪漫鏈（公式不動）──
     T = _temptation(rel, persona, active)
 
     # 化解：安全感高且誘惑壓力不大（她夠忠誠、情敵沒那麼致命）
@@ -968,6 +1013,21 @@ def _choose_theme(state, rn):
     return "daily"
 
 
+def _maybe_seed_outing_rival(state, persona, theme):
+    """興趣/放假行程小機率「認識一個人」→ 植入 origin=outing、phase=露臉 的潛在對象。
+    僅在無進行中情敵、未出軌時觸發；之後 checkin 的 _advance_rival 會走鋪墊推進。回傳種子或 None。"""
+    if (theme != "outing_innocent" or _active_rival(state)
+            or state.get("flags", {}).get("affair")
+            or stage_index(state["relationship"]["stage"]) < 1):
+        return None
+    if random.random() >= 0.25:
+        return None
+    seed = persona_gen.generate_rival(persona, origin="outing")
+    state.setdefault("pending_events", []).append(seed)
+    save_state(state)
+    return seed
+
+
 def _theme_lines(theme, state, p, cfg):
     """依主題產生『她這則要說什麼』的指引。"""
     mode = (cfg or {}).get("intimacy_mode", "explicit")
@@ -1041,6 +1101,7 @@ def cmd_cronmsg(args, cfg):
 
     # ── 信箱升級鏈：依稀有度決定要不要發、發第幾則 ──
     inbox = state.get("inbox", [])
+    seeded = None
     grade = _persona_grade(p)
     max_msgs, wait_h = INBOX_PATIENCE.get(grade, INBOX_PATIENCE["R"])
     if not inbox:
@@ -1049,6 +1110,7 @@ def cmd_cronmsg(args, cfg):
             return (f"（距上次互動才 {gap:.1f} 小時、未達 {wait_h} 小時，先給點空間、暫不主動傳。"
                     f"她是 {grade} 級，越稀有越快主動、越沒耐性。）")
         seq, theme = 1, _choose_theme(state, rn)
+        seeded = _maybe_seed_outing_rival(state, p, theme)
     else:
         seq = len(inbox) + 1
         if seq > max_msgs:
@@ -1075,6 +1137,10 @@ def cmd_cronmsg(args, cfg):
     elif rn and "工作" in rn[0]:
         lines.append("  她上班/值班中偷閒傳一句——會說很忙但想你、晚點再聊。")
     lines += _theme_lines(theme, state, p, cfg)
+    if seeded:
+        lines.append(
+            f"  （這趟她剛好認識了一個人：{_rival_label(seeded)}——只是萍水相逢、單純提一句，"
+            "別演成曖昧；後續會不會發展，看你接下來陪不陪她。）")
     # 升級語氣：自言自語、追問、賭氣
     if seq > 1:
         lines.append(f"  你上一則傳的是：「{inbox[-1].get('text','')}」——這則是**沒等到回覆後的自言自語/追問**，承接它。")
@@ -1216,7 +1282,12 @@ def cmd_rival(args, cfg):
     still = active in state.get("pending_events", [])
     save_state(state)
     write_soul(state, cfg)
-    tail = (f"情敵 {name} 階段 {active.get('stage')}/3" if still else f"情敵 {name} 已退場")
+    if not still:
+        tail = f"情敵 {name} 已退場"
+    elif _rival_phase(active) == "追求":
+        tail = f"情敵 {name} 階段 {active.get('stage')}/3"
+    else:
+        tail = f"{name} 還在「{_rival_phase(active)}」鋪墊期（尚未成追求者）"
     return (msg + f"\n（現況：安全感 {rel['trust_security']}、好感 {rel['affinity']}、{tail}。"
             "請以她的個性把上面的反應演出來。）")
 
@@ -1256,7 +1327,12 @@ def cmd_status(args, cfg):
     evs = [e for e in state.get("pending_events", []) if e.get("chain") == "rival"]
     if evs:
         e = evs[0]
-        out.append(f"  情敵：{_rival_label(e)} 魅力{e.get('allure','?')}｜階段 {e['stage']}/3")
+        ph = _rival_phase(e)
+        if ph == "追求":
+            out.append(f"  情敵：{_rival_label(e)} 魅力{e.get('allure','?')}｜階段 {e['stage']}/3")
+        else:
+            out.append(f"  新面孔（{ph}）：{_rival_label(e)} 魅力{e.get('allure','?')}"
+                       "——尚未成為追求者，現在多陪她最容易化解。")
     ms = state.get("milestones", [])
     if ms:
         out.append("  里程碑：" + "、".join(f"{m['type']}" for m in ms[-5:]))
