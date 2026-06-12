@@ -71,10 +71,12 @@ cat <<'EOF'
     bye [理由]        跟目前對象分手
     companion <cmd>   等同 python3 scripts/relationship.py <cmd>
 
-── 選用：讓她主動傳訊（Cron）──
-本 skill 提供 `cron-msg` 產生「她主動傳訊」的指引。請在 Hermes 的 Cron（第 4 支柱）新增排程，
-讓 agent 在指定時段執行：
-    python3 ~/.hermes/skills/companion-soul/scripts/relationship.py cron-msg
-建議時段：早上 / 中午 / 下班 / 睡前。Hermes 會把回傳的指引演成她主動發來的訊息。
+── 選用：讓她主動傳訊（Cron + 非同步信箱）──
+她的主動訊息採「非同步信箱」：不推播 alert，存著等你下次打開聊天（checkin）才看到。
+請在 Hermes 的 Cron（第 4 支柱）排程，讓 agent 定時執行兩步：
+    1) python3 ~/.hermes/skills/companion-soul/scripts/relationship.py cron-msg
+    2) 若 cron-msg 回的是生成指引（不是「不發/還在等」），就以她的身分寫出那則訊息，再執行：
+       python3 .../relationship.py inbox add "<她的訊息原文>" --theme <cron-msg 指示的主題>
+建議每 1~2 小時跑一次（睡覺時段會自動不發）。等不到回覆她會升級鬧脾氣（越稀有越沒耐性）。
 （若你偏好用系統 crontab，也可自行排程，但 Hermes 內建 Cron 能直接讓她「開口」。）
 EOF

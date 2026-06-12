@@ -213,6 +213,7 @@ def new_state(persona):
             "overask_streak": 0, "help_streak": 0, "anger_strikes": 0,
         },
         "milestones": [], "memories": [], "pending_events": [],
+        "inbox": [],  # 她趁你不在時傳來、凍結待讀的主動訊息（見 §信箱）
         "flags": {"affair": False, "engaged": False, "married": False,
                   "leaving": False, "caught_in_act": False},
     }
@@ -319,6 +320,16 @@ def _in_window(h, start, end):
     return h >= start or h < end
 
 
+def _leisure_now(persona, dt):
+    """她下班／放假此刻在做什麼——綁她的興趣與週末行程。"""
+    life = persona.get("life") or {}
+    hobbies = life.get("hobbies") or ["放空"]
+    if dt.weekday() >= 5:  # 週末
+        wk = (life.get("schedule") or {}).get("週末")
+        return wk or f"放假，去{random.choice(hobbies)}或找朋友"
+    return f"下班後在{random.choice(hobbies)}、放鬆一下"
+
+
 def _routine_now(persona, dt):
     """依現在時間推斷她正在做什麼。回傳 (描述, 是否在睡, 被吵醒反應)；舊存檔無 routine 回 None。"""
     rt = (persona.get("life") or {}).get("routine")
@@ -335,7 +346,7 @@ def _routine_now(persona, dt):
                 True, rt.get("wake_react", "迷糊地醒來"))
     if working:
         return (f"正在工作——{rt.get('work_desc','')}", False, None)
-    return (f"下班／休息中（{rt.get('chrono','')}，{rt.get('chrono_desc','')}）", False, None)
+    return (f"{_leisure_now(persona, dt)}（{rt.get('chrono','')}）", False, None)
 
 
 def _apply_decay(state, cfg, briefing):
@@ -566,6 +577,9 @@ def cmd_checkin(args, cfg):
         random.seed(args.seed)
     briefing = []
     rel = state["relationship"]
+
+    # 信箱：先把她趁你不在傳的訊息遞送出來（打開＝已讀＝等同回覆，重置鬧脾氣鏈）
+    _deliver_inbox(state, briefing)
 
     # 更新進入本階段的天數
     state["counters"]["days_since_stage"] = days_between(
@@ -900,6 +914,93 @@ def cmd_breakup(args, cfg):
     return f"你和 {name} 分手了。前任已封存到 {fn}。執行 `newpersona` 重新開始。"
 
 
+# ── 主動訊息信箱（非同步）＋ 行程告知 ─────────────────────────
+# 稀有度耐性表：grade -> (留言上限, 兩則之間/首則前的等待時數)。越稀有＝上限越少、等待越短（越快鬧脾氣）。
+INBOX_PATIENCE = {"N": (3, 6), "R": (3, 5), "S": (3, 4), "SR": (2, 3), "SSR": (2, 2)}
+# 等到最後一則仍沒回覆 → 她賭氣，打開時依稀有度加的怒氣量。
+INBOX_ANGER = {"N": 8, "R": 10, "S": 12, "SR": 16, "SSR": 20}
+
+# 行程告知：她主動報備要出門。無情敵＝純興趣/朋友（頂多讓你吃醋）；情敵推進＝跟情敵出去、隨階段升級。
+OUTING_INNOCENT = [  # (活動樣板 {who}=朋友, 是否可能晚回/過夜)
+    ("和{who}去唱歌", False), ("和{who}去吃到飽", False), ("和{who}去看展", False),
+    ("和{who}去爬山透氣", False), ("和{who}去泡溫泉、可能晚點回", True),
+    ("和{who}去喝幾杯", False), ("和{who}約了下午茶", False),
+    ("回老家一趟、住一晚", True), ("和{who}去夜衝看海", True),
+]
+OUTING_RIVAL = {  # rival.stage -> (活動樣板 {npc}=情敵, 是否晚歸/過夜, 語氣)
+    2: [("{npc}約我吃飯，就同事一起啦", False, "半遮半掩、說只是普通朋友"),
+        ("{npc}說帶我去看個展，順路而已", False, "輕描淡寫、怕你多想"),
+        ("跟{npc}他們一群人去喝東西", False, "強調是一群人、沒什麼")],
+    3: [("{npc}約我去泡溫泉…我可能比較晚回", True, "閃躲、帶點心虛"),
+        ("今晚跟{npc}去喝酒，你別等我了", True, "逃避、語氣有點冷"),
+        ("{npc}說帶我去他朋友的民宿走走", True, "含糊其詞、不敢明講過夜")],
+}
+OUTING_AFFAIR = [  # 已出軌：坦白/冷淡的去向告知（NTR）
+    ("我去{npc}家，今晚不回來了", True, "坦白或破罐破摔"),
+    ("跟{npc}出去過夜，先跟你說一聲", True, "冷淡、近乎告知而非請示"),
+]
+
+
+def _hours_since(iso):
+    dt = parse_dt(iso)
+    return 1e9 if not dt else (now_dt() - dt).total_seconds() / 3600.0
+
+
+def _inbox_tone(seq, max_msgs):
+    """第 1 則 fresh、最後一則 annoyed（賭氣）、中間 worried（追問）。"""
+    if seq <= 1:
+        return "fresh"
+    return "annoyed" if seq >= max_msgs else "worried"
+
+
+def _active_rival(state):
+    return next((e for e in state.get("pending_events", []) if e.get("chain") == "rival"), None)
+
+
+def _choose_theme(state, rn):
+    """seq==1 主動訊息主題：背叛報備 > 興趣報備 > 日常。"""
+    rival = _active_rival(state)
+    if rival and (rival.get("stage", 0) >= 2 or state.get("flags", {}).get("affair")):
+        return "outing_rival"
+    free = rn and not rn[1] and "工作" not in rn[0]  # 醒著且非上班＝有空
+    if free and random.random() < 0.5:
+        return "outing_innocent"
+    return "daily"
+
+
+def _theme_lines(theme, state, p, cfg):
+    """依主題產生『她這則要說什麼』的指引。"""
+    mode = (cfg or {}).get("intimacy_mode", "explicit")
+    life = p.get("life") or {}
+    if theme == "outing_innocent":
+        who = random.choice(life.get("social_circle") or ["朋友"])
+        act, overnight = random.choice(OUTING_INNOCENT)
+        out = [f"  主題【興趣行程·報備】：她主動告訴你她（等下/今天）要去「{act.format(who=who)}」。",
+               "  這是報備/分享、不是背叛——但她會順便看你會不會吃醋、在不在乎。"]
+        if overnight:
+            out.append("  這趟可能晚回/過夜：她會要你安心，或反過來撒嬌討關注。")
+        return out
+    if theme == "outing_rival":
+        rival = _active_rival(state) or {}
+        npc = _rival_name(rival)
+        affair = state.get("flags", {}).get("affair")
+        if affair:
+            act, overnight, mood = random.choice(OUTING_AFFAIR)
+            tag = "出軌後·NTR"
+        else:
+            st = max(2, min(3, rival.get("stage", 2)))
+            act, overnight, mood = random.choice(OUTING_RIVAL.get(st, OUTING_RIVAL[2]))
+            tag = f"情敵 stage{rival.get('stage', '?')}"
+        out = [f"  主題【背叛報備·{tag}】：她主動告知她要和 **{npc}** 出去：「{act.format(npc=npc)}」。",
+               f"  語氣：{mood}。這是把『被搭訕/動搖/越線』攤到你面前的告知——觀察你的反應。"]
+        if overnight:
+            out.append("  ⚠ 這趟暗示晚歸/過夜（NTR 走向）。")
+        if mode == "off":
+            out.append("  ◎ off 模式：只陳述她要去哪、和誰，不帶任何性暗示。")
+        return out
+    return [f"  主題【日常】：想你/分享生活。可帶到：{_life_log(p)}"]
+
+
 # ── Cron 主動訊息 ───────────────────────────────────────────
 SLOT_TOPIC = {
     "morning": ("早安", "睡前/起床想到你，分享今天的計畫"),
@@ -920,11 +1021,11 @@ def _slot_from_hour(h):
 
 
 def cmd_cronmsg(args, cfg):
+    """決定她此刻要不要主動傳訊、發第幾則（鬧脾氣升級鏈）、什麼主題，並產生給 agent 生成訊息的指引。
+    本指令**不存訊息**；agent 生成後須呼叫 `inbox add` 把訊息凍結入信箱。"""
     state = load_state()
     if not state or not state.get("active"):
         return "（沒有進行中的關係，不發主動訊息。）"
-    slot = args.slot or _slot_from_hour(now_dt().hour)
-    label, intent = SLOT_TOPIC.get(slot, SLOT_TOPIC["evening"])
     rel = state["relationship"]
     p = state["persona"]
     if args.seed is not None:
@@ -932,36 +1033,125 @@ def cmd_cronmsg(args, cfg):
     now = now_dt()
     rn = _routine_now(p, now)
     sleeping = bool(rn and rn[1])
+    force = bool(getattr(args, "force", False))
     # 睡著時預設不主動傳訊（排程請挑她醒著的時段）；--force 則演成半夢半醒
-    if sleeping and not getattr(args, "force", False):
+    if sleeping and not force:
         chrono = ((p.get("life") or {}).get("routine") or {}).get("chrono", "")
         return f"（{p['name']} 現在正在睡（{chrono}），不主動傳訊——排程請挑她醒著的時段。）"
-    # 依此刻活動調整情境
-    if sleeping:
-        label, intent = "深夜", "睡不著、半夢半醒間想你，傳了句迷糊的訊息"
-    elif rn and "工作" in rn[0]:
-        label, intent = "偷閒", "上班/值班中偷閒傳一句——會說很忙但想你、晚點再好好聊"
-    elif rn:
-        intent = f"{intent}（她現在：{rn[0]}）"
+
+    # ── 信箱升級鏈：依稀有度決定要不要發、發第幾則 ──
+    inbox = state.get("inbox", [])
+    grade = _persona_grade(p)
+    max_msgs, wait_h = INBOX_PATIENCE.get(grade, INBOX_PATIENCE["R"])
+    if not inbox:
+        gap = _hours_since(state["counters"].get("last_interaction_at"))
+        if gap < wait_h and not force:
+            return (f"（距上次互動才 {gap:.1f} 小時、未達 {wait_h} 小時，先給點空間、暫不主動傳。"
+                    f"她是 {grade} 級，越稀有越快主動、越沒耐性。）")
+        seq, theme = 1, _choose_theme(state, rn)
+    else:
+        seq = len(inbox) + 1
+        if seq > max_msgs:
+            return (f"（已連傳 {max_msgs} 則沒等到回覆——{p['name']}（{grade} 級）在賭氣等你、不再傳了。"
+                    "等對方 `checkin` 打開才會看到那些累積的訊息。）")
+        gap = _hours_since(inbox[-1].get("at"))
+        if gap < wait_h and not force:
+            return f"（上一則才過 {gap:.1f} 小時、未達 {wait_h} 小時，她還在等回覆，時候未到。）"
+        theme = inbox[-1].get("theme", "daily")
+    tone = _inbox_tone(seq, max_msgs)
+
+    # ── 組裝給 agent 生成訊息的指引 ──
+    label = "深夜" if sleeping else SLOT_TOPIC.get(
+        args.slot or _slot_from_hour(now.hour), SLOT_TOPIC["evening"])[0]
     lines = [
-        f"[主動訊息·{label}] 以 {p['name']}（{p['archetype']}）的身分，主動傳訊給對方。",
+        f"[主動訊息·{label}｜第 {seq} 則/最多 {max_msgs} 則｜語氣:{tone}] "
+        f"以 {p['name']}（{p['archetype']}・{grade} 級）的身分主動傳訊。",
         f"  此刻 {now.strftime('%H:%M')}：{rn[0] if rn else '—'}。",
-        f"  目的：{intent}。",
         f"  當前：{rel['stage']}｜好感 {rel['affinity']}｜安全感 {rel['trust_security']}｜心情 {rel['mood']}。",
         f"  稱呼用：{render_soul._address(rel['stage'], cfg)}；語氣依個性與心情。",
-        f"  可帶到的生活：{_life_log(p)}",
     ]
+    if sleeping:
+        lines.append("  她半夢半醒間傳的，語氣迷糊。")
+    elif rn and "工作" in rn[0]:
+        lines.append("  她上班/值班中偷閒傳一句——會說很忙但想你、晚點再聊。")
+    lines += _theme_lines(theme, state, p, cfg)
+    # 升級語氣：自言自語、追問、賭氣
+    if seq > 1:
+        lines.append(f"  你上一則傳的是：「{inbox[-1].get('text','')}」——這則是**沒等到回覆後的自言自語/追問**，承接它。")
+    if tone == "worried":
+        lines.append("  語氣：等不到回覆、有點擔心你在忙/不理她，開始碎念追問。")
+    elif tone == "annoyed":
+        extra = "（背叛線：賭氣『算了你都不回，那我真的去了／跟他走了』）" if theme == "outing_rival" else ""
+        lines.append(f"  語氣：**她不太高興了**——被晾著的委屈/賭氣，話變冷或鬧脾氣。{extra}")
+    else:
+        lines.append("  語氣：第一則、自然主動，不用生氣。")
     if rel.get("anger", 0) >= 40:
-        lines.append(f"  💢 她還在生氣（怒氣 {rel['anger']}）：這則要冷淡/賭氣/翻舊帳，不是甜蜜示好。")
-    elif rel["affinity"] >= 70:
+        lines.append(f"  💢 她本來就還在生氣（怒氣 {rel['anger']}）：更要冷淡/翻舊帳。")
+    elif rel["affinity"] >= 70 and tone == "fresh":
         lines.append("  好感很高：可以直接表達想念/撒嬌。")
-    elif rel["affinity"] < 40:
-        lines.append("  好感偏低：語氣保留一點，或帶點「你最近是不是很忙」的試探。")
-    for ev in state.get("pending_events", []):
-        if ev.get("chain") == "rival" and ev.get("stage", 0) >= 2:
-            lines.append(f"  ⚠ 可（不經意地）提到 {_rival_name(ev)} 又找她，觀察對方反應。")
-            break
+    lines.append(f"  ▶ 生成她這則訊息後，呼叫 `inbox add \"<她的訊息原文>\" --theme {theme}` 把它凍結存入信箱。")
     return "\n".join(lines)
+
+
+def cmd_inbox(args, cfg):
+    """主動訊息信箱：add 凍結存入 / peek 查看未讀 / clear 清空。"""
+    state = load_state()
+    if not state or not state.get("active"):
+        return "（沒有進行中的關係。）"
+    inbox = state.setdefault("inbox", [])
+    action = args.action
+    if action == "add":
+        text = (args.text or "").strip()
+        if not text:
+            return "（inbox add 需要訊息內容：inbox add \"<她的訊息>\"）"
+        grade = _persona_grade(state["persona"])
+        max_msgs, _ = INBOX_PATIENCE.get(grade, INBOX_PATIENCE["R"])
+        if len(inbox) >= max_msgs:
+            return f"（信箱已達 {grade} 級上限 {max_msgs} 則，這則不再追加。）"
+        seq = len(inbox) + 1
+        inbox.append({
+            "text": text, "at": now_dt().strftime("%Y-%m-%dT%H:%M:%S"),
+            "seq": seq, "tone": _inbox_tone(seq, max_msgs),
+            "theme": getattr(args, "theme", "daily") or "daily",
+        })
+        save_state(state)
+        return f"（已凍結第 {seq} 則訊息入信箱，等對方下次 `checkin` 打開才會看到。）"
+    if action == "peek":
+        if not inbox:
+            return "（信箱是空的。）"
+        out = ["（信箱未讀，依序）："]
+        for m in inbox:
+            t = parse_dt(m.get("at"))
+            hhmm = t.strftime("%m/%d %H:%M") if t else "?"
+            out.append(f"  [{hhmm}|{m.get('tone')}|{m.get('theme')}] {m.get('text')}")
+        return "\n".join(out)
+    if action == "clear":
+        n = len(inbox)
+        state["inbox"] = []
+        save_state(state)
+        return f"（已清空信箱 {n} 則。）"
+    return "（用法：inbox add|peek|clear）"
+
+
+def _deliver_inbox(state, briefing):
+    """checkin 開頭：把信箱累積的訊息原樣遞送、清空（＝已讀＝等同回覆），並套用賭氣後遺症。"""
+    inbox = state.get("inbox", [])
+    if not inbox:
+        return
+    rel = state["relationship"]
+    lines = ["📨【她稍早傳來的訊息】（依時間原樣呈現給玩家、像剛收到，不要報未讀數字）："]
+    for m in inbox:
+        t = parse_dt(m.get("at"))
+        lines.append(f"    [{t.strftime('%H:%M') if t else ''}] {m.get('text')}")
+    lines.append("  先把上面當作她稍早傳、你現在才看到的訊息呈現，再以她當下狀態接著聊。")
+    if any(m.get("tone") == "annoyed" for m in inbox):
+        bump = INBOX_ANGER.get(_persona_grade(state["persona"]), 10)
+        rel["anger"] = clamp(rel.get("anger", 0) + bump)
+        rel["mood"] = "不安"
+        lines.append(f"  ⚠ 她等到最後賭氣了（怒氣 +{bump}→{rel['anger']}）：現在受傷/冷淡，要你先哄"
+                     "（`interact sweet` 安撫）。")
+    state["inbox"] = []  # 打開＝已讀＝等同回覆，重置鬧脾氣鏈
+    briefing.insert(0, "\n".join(lines))
 
 
 # ── 玩家對情敵的主導：吃醋警告 / 要她設界線 / 表達信任 ──────────
@@ -1131,6 +1321,12 @@ def build_parser():
     sp.add_argument("--seed", type=int, default=None)
     sp.add_argument("--force", action="store_true", help="即使她在睡也照發（演成半夢半醒）")
 
+    sp = sub.add_parser("inbox")
+    sp.add_argument("action", choices=["add", "peek", "clear"])
+    sp.add_argument("text", nargs="?", default=None, help="add 時她的訊息原文")
+    sp.add_argument("--theme", default="daily",
+                    help="訊息主題（daily / outing_innocent / outing_rival）")
+
     sp = sub.add_parser("config")
     sp.add_argument("action", choices=["show", "set"])
     sp.add_argument("kv", nargs="?", default=None)
@@ -1144,6 +1340,7 @@ DISPATCH = {
     "regress": cmd_regress, "propose": cmd_propose, "intimacy": cmd_intimacy,
     "rival": cmd_rival, "remember": cmd_remember,
     "breakup": cmd_breakup, "cron-msg": cmd_cronmsg, "config": cmd_config,
+    "inbox": cmd_inbox,
 }
 
 

@@ -39,7 +39,8 @@ python3 scripts/relationship.py <command>
 | `intimacy` | 親密同意判定（回傳是否同意 + 尺度 + 她的狀態） |
 | `rival <warn/boundary/trust>` | 對情敵主動出手：吃醋警告 / 要她設界線 / 表達信任（見下） |
 | `breakup [--reason ...]` | 分手/離婚，封存為前任，進入單身 |
-| `cron-msg [--slot ...]` | 產生一則「她主動傳訊」的指引（給 Cron 用） |
+| `cron-msg [--slot ...] [--force]` | 由 Cron 觸發：判斷她此刻要不要主動傳訊、發第幾則（鬧脾氣升級鏈，依稀有度）、什麼主題，回傳生成指引（見下「主動訊息信箱」） |
+| `inbox add "<訊息>" [--theme ...]` / `inbox peek` / `inbox clear` | 把她生成的主動訊息**凍結存入信箱**／查看未讀／清空（`cron-msg` 會指示你呼叫 `inbox add`） |
 | `config show` / `config set k=v` | 偏好設定（見下） |
 | `rerender` | 用目前狀態重繪 SOUL.md（模板更新後就地套用，不改關係） |
 | `restore` | 把 SOUL.md 還原成最初版本（退出遊戲） |

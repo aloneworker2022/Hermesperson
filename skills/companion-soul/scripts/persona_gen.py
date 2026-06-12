@@ -175,6 +175,15 @@ LIBIDO = {
 HOBBIES = ["烘焙", "養多肉", "彈吉他", "玩拍立得", "蒐集明信片", "夜騎腳踏車",
            "追劇", "畫畫", "煮宵夜", "逛二手書店", "拼拼圖", "做手帳"]
 FRIEND_NAMES = ["阿May", "小薰", "靜姊", "阿哲", "Nina", "學姊", "店長", "小不點", "阿凱", "Coco"]
+# 放假行程（綁她的興趣與朋友）：{hobby}=她的興趣、{friend}=她身邊的人
+WEEKEND_PLANS = [
+    "睡到自然醒，再去{hobby}",
+    "約{friend}出門走走、吃頓好的",
+    "在家耍廢、追劇配{hobby}",
+    "一個人去{hobby}充電",
+    "和{friend}安排小旅行/踏青",
+    "整理房間、{hobby}，過個慵懶的一天",
+]
 RIVAL_NAMES = ["學長", "同事阿杰", "前任阿哲", "客人先生", "社團學長", "鄰桌的他",
                "健身房教練", "新來的同事", "大學同學阿翔"]
 
@@ -541,6 +550,12 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
     lib_grade, shy_delta, lib_desc = LIBIDO[libido_name]
     shyness = _clamp(arch["shyness"] + shy_delta)  # 好色更放得開、性冷感更保守
 
+    # 興趣與放假行程（綁在一起，週末行程從她的興趣/朋友套出來）
+    hobbies = _pick_n(HOBBIES, 2)
+    friends = _pick_n(FRIEND_NAMES, 3)
+    weekend = random.choice(WEEKEND_PLANS).format(
+        hobby=random.choice(hobbies), friend=random.choice(friends))
+
     persona = {
         "name": random.choice(NAMES.get(gender, NAMES["女"])),
         "gender": gender,
@@ -566,10 +581,10 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
             "routine": routine,
             "schedule": {
                 "平日": wdesc,
-                "週末": random.choice(["喜歡待在家充電", "會出門走走、找朋友", "睡到中午再出門"]),
+                "週末": weekend,
             },
-            "social_circle": _pick_n(FRIEND_NAMES, 3),
-            "hobbies": _pick_n(HOBBIES, 2),
+            "social_circle": friends,
+            "hobbies": hobbies,
             "current_arc": random.choice(ARCS),
         },
     }

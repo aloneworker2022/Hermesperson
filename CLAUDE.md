@@ -118,6 +118,9 @@ skills/companion-soul/
   "milestones": [ {type, note, at}, ... ],
   "memories": [ {note, at}, ... ],   // remember 指令累積，render 取最近 14 則進 SOUL（跨對話記憶）
   "pending_events": [ /* 進行中的事件，情敵鏈是 {"chain":"rival", ...} */ ],
+  "inbox": [ {text, at, seq, tone, theme}, ... ],  // 她趁你不在傳來、凍結待讀的主動訊息（非同步、不推播）
+                                   // tone: fresh|worried|annoyed（鬧脾氣升級鏈，依稀有度）；theme: daily|outing_innocent|outing_rival
+                                   // cron-msg 決定要不要發/第幾則/主題 → inbox add 凍結 → checkin 打開遞送並清空（=已讀=回覆）
   "flags": {
     "affair": false,        // 出軌旗標亮起（待原諒或分手）
     "engaged": false, "married": false,
@@ -158,6 +161,10 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
 - `STAGE_THRESHOLDS = {階段: (好感, 安全感, 天數)}` — 升級三達標門檻
 - `INTERACT_DELTA = {品質: (好感Δ, 安全感Δ, mood)}` — sweet/good/normal/bad/fight
 - `_temptation()` / `_trigger_affair()` 內的係數 — 出軌與被奪走機率公式
+- `INBOX_PATIENCE = {grade: (留言上限, 等待時數)}` / `INBOX_ANGER = {grade: 怒氣量}` — 主動訊息信箱的
+  鬧脾氣升級鏈耐性（越稀有越沒耐性）；`_inbox_tone()` 依序位算 fresh/worried/annoyed
+- `OUTING_INNOCENT` / `OUTING_RIVAL` / `OUTING_AFFAIR` — 行程告知內容池（興趣報備 vs 跟情敵出去的 NTR 告知）；
+  `_choose_theme()` 決定 cron-msg 主題、`_theme_lines()` 產生指引、`_leisure_now()` 算下班/放假在做什麼
 
 `render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`、
 `ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）
