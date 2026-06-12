@@ -929,14 +929,31 @@ def cmd_cronmsg(args, cfg):
     p = state["persona"]
     if args.seed is not None:
         random.seed(args.seed)
+    now = now_dt()
+    rn = _routine_now(p, now)
+    sleeping = bool(rn and rn[1])
+    # 睡著時預設不主動傳訊（排程請挑她醒著的時段）；--force 則演成半夢半醒
+    if sleeping and not getattr(args, "force", False):
+        chrono = ((p.get("life") or {}).get("routine") or {}).get("chrono", "")
+        return f"（{p['name']} 現在正在睡（{chrono}），不主動傳訊——排程請挑她醒著的時段。）"
+    # 依此刻活動調整情境
+    if sleeping:
+        label, intent = "深夜", "睡不著、半夢半醒間想你，傳了句迷糊的訊息"
+    elif rn and "工作" in rn[0]:
+        label, intent = "偷閒", "上班/值班中偷閒傳一句——會說很忙但想你、晚點再好好聊"
+    elif rn:
+        intent = f"{intent}（她現在：{rn[0]}）"
     lines = [
         f"[主動訊息·{label}] 以 {p['name']}（{p['archetype']}）的身分，主動傳訊給對方。",
+        f"  此刻 {now.strftime('%H:%M')}：{rn[0] if rn else '—'}。",
         f"  目的：{intent}。",
         f"  當前：{rel['stage']}｜好感 {rel['affinity']}｜安全感 {rel['trust_security']}｜心情 {rel['mood']}。",
         f"  稱呼用：{render_soul._address(rel['stage'], cfg)}；語氣依個性與心情。",
         f"  可帶到的生活：{_life_log(p)}",
     ]
-    if rel["affinity"] >= 70:
+    if rel.get("anger", 0) >= 40:
+        lines.append(f"  💢 她還在生氣（怒氣 {rel['anger']}）：這則要冷淡/賭氣/翻舊帳，不是甜蜜示好。")
+    elif rel["affinity"] >= 70:
         lines.append("  好感很高：可以直接表達想念/撒嬌。")
     elif rel["affinity"] < 40:
         lines.append("  好感偏低：語氣保留一點，或帶點「你最近是不是很忙」的試探。")
@@ -1112,6 +1129,7 @@ def build_parser():
     sp = sub.add_parser("cron-msg")
     sp.add_argument("--slot", choices=["morning", "noon", "evening", "night"], default=None)
     sp.add_argument("--seed", type=int, default=None)
+    sp.add_argument("--force", action="store_true", help="即使她在睡也照發（演成半夢半醒）")
 
     sp = sub.add_parser("config")
     sp.add_argument("action", choices=["show", "set"])
