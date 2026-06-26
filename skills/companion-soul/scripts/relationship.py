@@ -120,6 +120,7 @@ DEFAULT_CONFIG = {
     "img_expr_set": "basic",       # basic=只用 5 種心情表情 / full=14 種
     "img_scene": "off",            # off=不輸出場景標籤 / basic=3 種簡單場景 / full=9 種
     "timezone": "Asia/Taipei",     # 人物與玩家共用的時區（影響作息/衰退天數計算）
+    "married_chance": 0,            # 新人格是「人妻/人夫」(婚外情 NTR) 的機率 0~100（家庭主婦一律已婚）
 }
 
 
@@ -168,6 +169,14 @@ def backup_soul_once():
     ensure_dirs()
     if not os.path.exists(SOUL_BAK) and os.path.exists(SOUL_PATH):
         shutil.copyfile(SOUL_PATH, SOUL_BAK)
+
+
+def rotate_memory():
+    """換新人格時把舊的 MEMORY.md 封存到 archive，避免上一個人的記憶污染下一個人格。"""
+    if os.path.exists(MEMORY_PATH):
+        ensure_dirs()
+        ts = now_dt().strftime("%Y-%m-%d-%H%M%S")
+        shutil.move(MEMORY_PATH, os.path.join(ARCHIVE_DIR, f"MEMORY-{ts}.md"))
 
 
 def write_soul(state, cfg):
@@ -229,8 +238,11 @@ def cmd_newpersona(args, cfg):
                         state["persona"]["name"], rel.get("stage")))
     gender = args.gender or (None if cfg["gender_pref"] == "random" else cfg["gender_pref"])
     luck = int(cfg.get("rare_luck") or 0)
-    persona = persona_gen.generate_persona(gender, cfg.get("allow_archetypes"), luck)
+    married = bool(getattr(args, "married", False)) or (
+        random.random() < max(0, min(100, int(cfg.get("married_chance") or 0))) / 100.0)
+    persona = persona_gen.generate_persona(gender, cfg.get("allow_archetypes"), luck, married=married)
     backup_soul_once()
+    rotate_memory()  # 封存上一個人的 MEMORY.md，新的人從零開始（杜絕跨人格記憶污染）
     state = new_state(persona)
     save_state(state)
     write_soul(state, cfg)
@@ -239,12 +251,18 @@ def cmd_newpersona(args, cfg):
     grade = _persona_grade(p)
     limit = ANGER_THRESHOLD.get(grade, 9)
     banner = {"SSR": "🌟🌟 SSR！傳說級的相遇 🌟🌟\n", "SR": "🟣 SR！稀有的相遇 🟣\n"}.get(grade, "")
+    sp = p.get("spouse")
+    married_line = (f"  💍 她是**人妻**：有一位{sp['label']}（不是你）——你是她的婚外情人，"
+                   "從一開始就是偷情／NTR（細節見 SOUL『我的婚姻狀態』段）。\n") if sp else ""
     # 刻意保留神祕感：只揭露性別、總評與「有幾個特殊」，名字/個性/外貌/特殊內容都靠相處與「觀察」慢慢發現。
     return (banner + "✦ 你遇見了一個新的人。\n"
             f"  性別：{p['gender']}\n"
             f"  人物稀有度：{grade}（綜合評分 {p.get('overall', {}).get('score', '?')}）\n"
             f"  脾氣：被惹怒 {limit} 次就會出大事——稀有度越高越難伺候\n"
             f"  特殊：{n_traits} 個（內容先保密，靠相處和「觀察」自己發現）\n"
+            + married_line +
+            "  ⚠ 這是一個**全新的人**：請完全忘掉先前對話裡的任何人格、名字、稱呼與過往——"
+            "她不認識你、你們沒有任何共同回憶，從「初次見面」重新開始。\n"
             "  SOUL.md 已改寫。請以「初次見面」的口吻開場，但**不要主動報出名字、個性、"
             "外貌或特殊屬性**——這些要讓玩家透過聊天與「觀察」慢慢挖掘，不要一次講白。")
 
@@ -907,7 +925,15 @@ def _do_advance(state, cfg, target):
         state["flags"]["engaged"] = True
     if target == "夫妻":
         state["flags"]["married"] = True
-    add_milestone(state, MILESTONE_NAME.get(target, "升級"), f"關係推進到「{target}」。")
+    sp = state["persona"].get("spouse")
+    if sp:  # 人妻版：未婚=決定離婚、夫妻=真的離婚改嫁，里程碑語意不同
+        mname = {"未婚": "決定離婚", "夫妻": "離婚改嫁"}.get(target, MILESTONE_NAME.get(target, "升級"))
+        note = {"未婚": f"她決定為你和{sp['label']}離婚。",
+                "夫妻": f"她真的為你和{sp['label']}離了婚，正式跟你在一起。"}.get(
+                    target, f"關係推進到「{target}」。")
+        add_milestone(state, mname, note)
+    else:
+        add_milestone(state, MILESTONE_NAME.get(target, "升級"), f"關係推進到「{target}」。")
 
 
 def cmd_advance(args, cfg):
@@ -1208,7 +1234,7 @@ def cmd_cronmsg(args, cfg):
         f"以 {p['name']}（{p['archetype']}・{grade} 級）的身分主動傳訊。",
         f"  此刻 {now.strftime('%H:%M')}：{rn[0] if rn else '—'}。",
         f"  當前：{rel['stage']}｜好感 {rel['affinity']}｜安全感 {rel['trust_security']}｜心情 {rel['mood']}。",
-        f"  稱呼用：{render_soul._address(rel['stage'], cfg)}；語氣依個性與心情。",
+        f"  稱呼用：{render_soul._address(rel['stage'], cfg, p)}；語氣依個性與心情。",
     ]
     if sleeping:
         lines.append("  她半夢半醒間傳的，語氣迷糊。")
@@ -1460,8 +1486,10 @@ def cmd_status(args, cfg):
     p = state["persona"]
     grade = _persona_grade(p)
     limit = ANGER_THRESHOLD.get(grade, 9)
+    sp = p.get("spouse")
+    married_tag = f"｜💍人妻（{sp['label']}：{sp['name']}）" if sp else ""
     out = [
-        f"● {p['name']}（{p['gender']}/{p['age']}/{p['archetype']}）｜稀有度 {grade}",
+        f"● {p['name']}（{p['gender']}/{p['age']}/{p['archetype']}）｜稀有度 {grade}{married_tag}",
         f"  階段：{rel['stage']}｜好感 {rel['affinity']}/100｜安全感 {rel['trust_security']}/100",
         f"  心情：{rel['mood']}｜親密度 {rel.get('intimacy_level',0)}/5｜主動度 {p['proactivity']}｜忠誠 {p.get('loyalty',60)}",
         f"  怒氣：{rel.get('anger',0)}/100｜惹怒紀錄 {c.get('anger_strikes',0)}/{limit}（{grade} 級脾氣，達上限會出大事）",
@@ -1539,6 +1567,7 @@ def build_parser():
     sp = sub.add_parser("newpersona")
     sp.add_argument("--gender", choices=["女", "男", "雙性"], default=None)
     sp.add_argument("--force", action="store_true")
+    sp.add_argument("--married", action="store_true", help="生成人妻/人夫（婚外情 NTR）")
 
     sp = sub.add_parser("checkin")
     sp.add_argument("--seed", type=int, default=None)

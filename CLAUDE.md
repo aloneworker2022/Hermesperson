@@ -75,7 +75,7 @@ skills/companion-soul/
 ├── soul.original.bak   第一次 newpersona 時備份的原始 SOUL.md（restore 用）
 └── archive/            分手後封存的前任 state
 ~/.hermes/SOUL.md       算繪輸出（被 LLM 載入的人格檔）
-~/.hermes/MEMORY.md     里程碑 append-only log
+~/.hermes/MEMORY.md     里程碑 append-only log（換新人格時 rotate_memory() 會封存到 archive/，避免跨人格記憶污染）
 ```
 
 路徑由 `relationship.py` 頂部的環境變數決定，**測試時務必覆寫到 /tmp**：
@@ -90,6 +90,7 @@ skills/companion-soul/
   "active": true,
   "persona": { /* persona_gen.generate_persona() 的整包輸出 */
     "name": "...", "gender": "女|男|雙性", "age": 24, "archetype": "傲嬌",
+    "spouse": { label:"丈夫|妻子", name, occupation, years, kids, situation },  // ★ 僅人妻/人夫(婚外情)才有；玩家是情夫，配偶不是玩家。家庭主婦一律已婚；單身對象無此欄
     "libido": {name:"性冷感|好色|雙性好色", grade:"N|S|SSR", desc},  // 性慾傾向（影響 shyness 與親密演出）
     "proactivity": "主動|被動", "shyness": 0-100, "jealousy": 0-100,
     "loyalty": 0-100,                    // ★ 出軌判定的關鍵之一（低=易淪陷）
@@ -180,9 +181,14 @@ _apply_decay()        冷落衰退：依距上次互動天數扣好感/安全感
   `LIFE_LOG_RIVAL`（鋪墊期情敵混入生活旁白，0.4）
 
 `render_soul.py`：`STAGES`（階段順序，index 即等級）、`MOOD_BEHAVIOR`、`ADDRESS_BY_STAGE`、
-`ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）
+`ANGER_THRESHOLD`（稀有度→惹怒門檻；relationship.py 由此匯入，單一來源）、
+`_marital_section()`（人妻 NTR 段：配偶 dossier + 你是情夫硬規則 + NTR 張力，三尺度分支）、
+`_address(stage, cfg, persona)`（人妻不能用「老公/老婆」稱情夫，到夫妻=離婚改嫁才改口；多了 persona 參數）、
+render() 內 `fresh_note`（初識期失憶提示，杜絕跨人格污染）、`occupation_desc`（職業說明行）
 `persona_gen.py`：`ARCHETYPES`、`RARITY_WEIGHT`、`SPECIAL_TRAITS`、`GRADE_WEIGHT`/`_roll_graded`
 （職業/體型/罩杯/眼睛的 N/R/S/SR/SSR 評級抽，吃 luck）、`LIBIDO`（性慾維度）、
+`OCC_DESC`/`occupation_desc()`（冷門/情色職業的「實際在做什麼」說明，消除半套店=酒店這類誤解，render 進 SOUL 工作行）、
+`SPOUSE_*`/`MARRIAGE_SITUATION`/`generate_spouse()`（人妻/人夫 婚外情 NTR 的配偶 dossier；`generate_persona(..., married)` 或抽到家庭主婦時掛上 `persona['spouse']`）、
 `HOBBY_POOL`（興趣依氣質分桶）/`ARCHETYPE_HOBBY_VIBE`（原型→偏好氣質）/`_pick_hobbies()`（加權抽，貼個性）、
 `RIVAL_RELATION`/`RIVAL_RELATION_OUTING`（情敵身分池，依 origin 取向）、`generate_rival(persona, origin)`、
 `OCC_ROUTINE`（職業→工作時段/描述）、`CHRONOTYPES`（睡眠型）、各種名字/外貌池

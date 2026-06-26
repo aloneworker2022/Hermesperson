@@ -3,9 +3,11 @@
 """render_soul.py — 由感情 state 算繪 SOUL.md。
 
 也提供共用常數（關係階梯、稱呼、心情行為），供 relationship.py 匯入，
-避免循環匯入：本模組不匯入 relationship。
+避免循環匯入：本模組不匯入 relationship（但可匯入 persona_gen，後者不依賴本模組）。
 """
 import os
+
+import persona_gen
 
 # ── 共用常數 ────────────────────────────────────────────────
 STAGES = ["初識", "朋友", "曖昧", "戀人", "未婚", "夫妻"]
@@ -46,12 +48,20 @@ def stage_index(stage):
         return 0
 
 
-def _address(stage, config):
+def _address(stage, config, persona=None):
     pet = (config or {}).get("user_pet_name")
     if pet:
         return pet
+    ug = (config or {}).get("user_gender")
+    spouse = (persona or {}).get("spouse")
+    if spouse:
+        # 人妻/人夫：「老公/老婆」是配偶的位子，婚外情人不能用——除非她已為你離婚（夫妻階段）
+        if stage_index(stage) >= 5:
+            return "老公" if ug == "男" else "老婆" if ug == "女" else "親愛的"
+        if stage in ("戀人", "未婚"):
+            return "親愛的"
+        return ADDRESS_BY_STAGE.get(stage, "你")
     if stage == "夫妻":
-        ug = (config or {}).get("user_gender")
         return "老公" if ug == "男" else "老婆" if ug == "女" else "親愛的"
     return ADDRESS_BY_STAGE.get(stage, "你")
 
@@ -335,6 +345,44 @@ def _confess_by_stage(stage):
             "殘酷的細節對照，每一句都扎人。")
 
 
+def _marital_section(persona, config):
+    """人妻/人夫（婚外情 NTR）：配偶 dossier + 你是情夫的硬規則 + NTR 張力（受 intimacy_mode 控）。
+    舊存檔/單身對象無 spouse → 回空字串。"""
+    sp = persona.get("spouse")
+    if not sp:
+        return ""
+    mode = (config or {}).get("intimacy_mode", "explicit")
+    label = sp.get("label", "丈夫")
+    L = [
+        "## 💍 我的婚姻狀態（最重要：你是我的婚外情人）",
+        "",
+        f"我是**有夫之婦（人妻）**——我有一個{label}「{sp.get('name','')}」，"
+        f"是{sp.get('occupation','')}，我們結婚 {sp.get('years','幾')} 年了，{sp.get('kids','')}。",
+        f"**我的{label}不是你。** 你是我在婚姻之外愛上的人，我們之間是見不得光的婚外情。",
+        f"婚姻的現況：{sp.get('situation','')}——這就是我為什麼會淪陷在你身上。",
+        "",
+        "給扮演引擎的硬規則（絕對不能搞錯）：",
+        f"- **千萬不要把使用者當成我的{label}。** 我的{label}是另一個人（{sp.get('name','')}），"
+        f"多半不在場；使用者是我的**情夫／外遇對象**。",
+        f"- 我**不會**用「老公／老婆」稱呼使用者（那是{label}的位子）；我用名字或「親愛的」這類稱呼。",
+        f"- 偷情的張力要演出來：怕被發現、得挑時間、講電話要避著人、身上不能留痕跡、"
+        f"{label}回家或來電時要慌張掩飾。",
+    ]
+    if mode == "off":
+        L.append("- 親密相關只點出『我們是不正當的關係』這個事實，不描寫任何過程。")
+    else:
+        L.append(f"- NTR 張力是本劇本的核心：我背著{label}和你在一起的罪惡感與快感、偷來的刺激、"
+                 "你『把別人的妻子佔為己有』的征服慾，都可以著墨（尺度依 intimacy_mode）。")
+    L += [
+        "",
+        "關係怎麼走（人妻版的階段意義）：",
+        "- 「戀人」≈ 我們確立了地下戀人關係；「未婚」≈ 我開始認真考慮為你離婚；",
+        f"- 「夫妻」≈ 我真的為你和{label}攤牌、離婚，光明正大跟你在一起"
+        "（到這一步我才會改口叫你老公／老婆）。",
+    ]
+    return "\n".join(L)
+
+
 def _crisis_section(state, config):
     """當情敵動搖期或出軌時，算繪 SOUL.md 的『現在的危機』段（受 intimacy_mode 控尺度）。"""
     rel = state.get("relationship", {})
@@ -443,6 +491,18 @@ def render(state, config=None):
     stage = rel.get("stage", "初識")
     mood = rel.get("mood", "普通")
 
+    # 職業實際內容說明（消除「半套店當酒店」這類誤解）
+    occ = life.get("occupation", p.get("occupation", ""))
+    occ_desc = persona_gen.occupation_desc(occ)
+    occupation_desc = f"（{occ}實際在做的事：{occ_desc}）" if occ_desc else ""
+
+    # 初識期：提醒這是全新陌生人，杜絕跨人格／對話記憶污染
+    fresh_note = ""
+    if stage == "初識":
+        fresh_note = ("\n> ⚠ **我們才剛認識**——我對你一無所知，沒有任何過去的共同回憶。"
+                      "若先前的對話裡出現過別的名字、人格、稱呼或往事，**那些都不是我、也不是我們**，"
+                      "請完全當作沒發生過；不要把我和任何先前的人搞混。")
+
     rival_hint = "目前沒有特別的對象"
     for ev in state.get("pending_events", []):
         if ev.get("chain") != "rival":
@@ -469,7 +529,10 @@ def render(state, config=None):
         "{{CONTRAST}}": p.get("contrast", ""),
         "{{TONE}}": p.get("tone", ""),
         "{{CATCHPHRASES}}": "、".join(p.get("catchphrases", [])),
-        "{{ADDRESS}}": _address(stage, config),
+        "{{ADDRESS}}": _address(stage, config, p),
+        "{{FRESH_START_NOTE}}": fresh_note,
+        "{{MARITAL_SECTION}}": _marital_section(p, config),
+        "{{OCCUPATION_DESC}}": occupation_desc,
         "{{QUIRK}}": p.get("quirk", ""),
         "{{LIKES}}": "、".join(p.get("likes", [])),
         "{{DISLIKES}}": "、".join(p.get("dislikes", [])),

@@ -152,6 +152,31 @@ OCCUPATIONS = [
 ]
 LIKES = ["抹茶甜點", "看海", "貓", "下雨天", "老電影", "草莓", "爵士樂", "拍立得",
          "熱可可", "推理小說", "盆栽", "夜跑", "手沖咖啡", "煙火", "毛茸茸的東西", "星空"]
+
+# 職業實際內容說明（消除 LLM 對冷門/情色職業的誤解；只收需要澄清的，其餘 occupation_desc 回 None）
+OCC_DESC = {
+    "半套店小姐": "在『半套店』（也叫個人工作室、油壓半套）上班——提供全身按摩，外加『半套』的"
+                  "手部性服務（用手幫客人打手槍紓解），原則上**不**進行性交。這和酒店陪酒、"
+                  "應召性交易、泡泡浴都**不一樣**，別搞混。",
+    "泡泡浴小姐": "在泡泡浴店（土耳其浴）上班——幫客人沐浴，用塗滿泡泡的身體滑推服務，"
+                  "通常**含性交**，屬性風俗業，和只是陪酒的酒店不同。",
+    "酒店小姐": "在酒店（制服店/便服店）坐檯陪酒——陪客人喝酒、聊天、玩遊戲、唱歌，"
+                "主要是陪侍與情緒價值，不必然有性交易；熟客可能加錢『帶出場』另計。",
+    "應召女": "從事性交易（援交/外送茶）——接通告後到客人指定的旅館或住處提供性服務，以性交為主。",
+    "按摩師": "正當的按摩/推拿/SPA 師傅——**純按摩放鬆、沒有性服務**，別和半套店、泡泡浴混為一談。",
+    "showgirl": "展場活動的展演模特兒（showgirl）——在電玩展、車展、夜場穿主題服裝走檯、"
+                "炒熱人氣、跟粉絲互動拍照，是**表演性質、不是性服務**。",
+    "家庭主婦": "全職操持家務的家庭主婦——不外出上班，負責買菜、煮飯、打理家裡。"
+                "（她已婚與否、配偶是誰，一律以『婚姻狀態』段為準，別自行假設。）",
+    "聲優": "配音員——幫動畫、遊戲、廣告配音，靠聲音演出，不是檯面上的藝人。",
+    "模特兒": "服裝/平面/廣告模特兒——拍攝、走秀的正當模特工作。",
+}
+
+
+def occupation_desc(occ):
+    return OCC_DESC.get(occ)
+
+
 DISLIKES = ["香菜", "被已讀不回", "突然的大聲", "苦瓜", "遲到", "黏膩的承諾跳票", "打雷",
             "被當空氣", "說謊", "蟑螂"]
 QUIRKS = ["其實很怕鬼", "睡前一定要抱抱枕", "喝醉會變得超誠實", "緊張就會摸耳朵",
@@ -279,6 +304,40 @@ RIVAL_TACTIC = {
         "{npc}把曖昧挑明，邀她一起越過那條線",
     ],
 }
+
+
+# ── 人妻/人夫（婚外情 NTR）：配偶 dossier 與婚姻處境 ─────────────
+SPOUSE_NAME = {  # 配偶名字（與對象性別相反）
+    "男": ["志明", "建宏", "俊賢", "家豪", "宗翰", "明哲", "國強", "偉誠", "文彬", "正雄"],
+    "女": ["淑芬", "雅惠", "美玲", "怡君", "佳穎", "麗華", "曉萍", "靜如", "惠美", "秀蘭"],
+}
+SPOUSE_OCCUPATION = ["科技業主管", "外商業務", "醫師", "土木工程師", "自己開公司的老闆",
+                     "銀行襄理", "公務員", "機師", "工廠廠長", "貨運司機", "律師", "警察"]
+# 她（依個性）為什麼會淪陷／接受婚外情——這是劇本的鉤子
+MARRIAGE_SITUATION = [
+    "結婚多年，丈夫忙於工作、聚少離多，早就沒了激情",
+    "丈夫天天應酬晚歸、對她不聞不問，她寂寞了好久",
+    "婚姻平淡如水，他把她當成空氣，她渴望重新被當成一個女人疼",
+    "丈夫長期外派／出差，她一個人獨守空閨",
+    "貌合神離的形式婚姻，只差一張離婚協議書",
+    "丈夫在床上冷淡又自私，她是在你身上才第一次嚐到被滿足的滋味",
+    "婚後感情漸漸變質，丈夫只在乎工作和面子，早就沒把她當女人看",
+]
+SPOUSE_KIDS = ["還沒有小孩", "有一個還在念幼稚園的孩子", "有兩個孩子", "頂客族、不打算生"]
+
+
+def generate_spouse(persona):
+    """為『人妻/人夫』生成配偶 dossier 與婚姻處境（婚外情 NTR 用）。配偶性別與對象相反。"""
+    sg = "男" if persona.get("gender") == "女" else "女"
+    label = "丈夫" if sg == "男" else "妻子"
+    return {
+        "label": label,
+        "name": random.choice(SPOUSE_NAME[sg]),
+        "occupation": random.choice(SPOUSE_OCCUPATION),
+        "years": random.randint(1, 9),
+        "kids": random.choice(SPOUSE_KIDS),
+        "situation": random.choice(MARRIAGE_SITUATION),
+    }
 
 
 def generate_rival(persona, origin=None):
@@ -572,8 +631,9 @@ def generate_appearance(gender, luck=0):
     }
 
 
-def generate_persona(gender=None, allow_optional=None, luck=0):
-    """產生一份人格 dict。gender: '女'/'男'/'雙性'/None(隨機只給女或男)。luck: 特殊屬性幸運值 0~100。"""
+def generate_persona(gender=None, allow_optional=None, luck=0, married=False):
+    """產生一份人格 dict。gender: '女'/'男'/'雙性'/None(隨機只給女或男)。luck: 特殊屬性幸運值 0~100。
+    married=True 或抽到『家庭主婦』職業 → 生成『人妻/人夫』：她已婚、配偶不是玩家，玩家是婚外情人。"""
     if gender not in ("女", "男", "雙性"):
         gender = random.choice(["女", "男"])
     allow_optional = set(allow_optional or [])
@@ -648,6 +708,9 @@ def generate_persona(gender=None, allow_optional=None, luck=0):
         grades["special"] = RARITY_TO_GRADE.get(top, "N")
     persona["grades"] = grades
     persona["overall"] = compute_overall(grades)
+    # 人妻/人夫（婚外情）：明確指定，或抽到「家庭主婦」一律已婚
+    if married or occupation == "家庭主婦":
+        persona["spouse"] = generate_spouse(persona)
     return persona
 
 
@@ -656,11 +719,12 @@ def main():
     ap.add_argument("--gender", choices=["女", "男"], default=None)
     ap.add_argument("--allow", nargs="*", default=[], help="允許抽到的可選原型，如 病嬌")
     ap.add_argument("--luck", type=int, default=0, help="特殊屬性幸運值 0~100（越高越容易抽到高稀有度）")
+    ap.add_argument("--married", action="store_true", help="生成人妻/人夫（婚外情 NTR）")
     ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
     if args.seed is not None:
         random.seed(args.seed)
-    print(json.dumps(generate_persona(args.gender, args.allow, args.luck),
+    print(json.dumps(generate_persona(args.gender, args.allow, args.luck, args.married),
                      ensure_ascii=False, indent=2))
 
 
